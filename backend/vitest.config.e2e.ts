@@ -7,6 +7,8 @@ export default defineConfig({
     setupFiles: ['reflect-metadata', './test/support/env.ts'],
     root: './',
     include: ['**/*.e2e-spec.ts'],
+    // The files share one database, so one file could send another file's queued emails.
+    fileParallelism: false,
     globalSetup: ['./test/support/global-setup.ts'],
     hookTimeout: 120_000,
     testTimeout: 30_000,

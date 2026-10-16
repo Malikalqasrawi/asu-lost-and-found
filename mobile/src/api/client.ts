@@ -1,9 +1,26 @@
+import {
+  clearTokens,
+  getAccessToken,
+  getRefreshToken,
+  notifySessionExpired,
+  saveTokens,
+  type Tokens,
+} from '@/session/tokens';
+
 const REQUEST_TIMEOUT_MS = 10_000;
+
+type Method = 'GET' | 'POST' | 'PATCH' | 'DELETE';
+
+interface RequestOptions {
+  body?: unknown;
+  auth?: boolean;
+}
 
 export class ApiError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    readonly code?: string,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -18,20 +35,92 @@ function baseUrl(): string {
   return url.replace(/\/+$/, '');
 }
 
-export async function apiGet<T>(path: string): Promise<T> {
+async function send(method: Method, path: string, { body, auth }: RequestOptions) {
+  const headers: Record<string, string> = { Accept: 'application/json' };
+  if (body !== undefined) {
+    headers['Content-Type'] = 'application/json';
+  }
+  const token = auth ? getAccessToken() : null;
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-
   try {
-    const response = await fetch(`${baseUrl()}${path}`, {
-      headers: { Accept: 'application/json' },
+    return await fetch(`${baseUrl()}${path}`, {
+      method,
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
       signal: controller.signal,
     });
-    if (!response.ok) {
-      throw new ApiError(response.status, `Request failed with status ${response.status}`);
-    }
-    return (await response.json()) as T;
   } finally {
     clearTimeout(timeout);
   }
+}
+
+async function toApiError(response: Response): Promise<ApiError> {
+  const body = (await response.json().catch(() => ({}))) as {
+    message?: string | string[];
+    code?: string;
+  };
+  const message = Array.isArray(body.message) ? body.message[0] : body.message;
+  return new ApiError(
+    response.status,
+    message ?? `Request failed with status ${response.status}`,
+    body.code,
+  );
+}
+
+let refreshing: Promise<boolean> | null = null;
+
+/**
+ * Gets a new access token with the stored refresh token. Requests that fail
+ * at the same time share one refresh, because a refresh token works only once.
+ */
+export function refreshSession(): Promise<boolean> {
+  refreshing ??= (async () => {
+    try {
+      const refreshToken = await getRefreshToken();
+      if (!refreshToken) {
+        return false;
+      }
+      const response = await send('POST', '/auth/refresh', { body: { refreshToken } });
+      if (!response.ok) {
+        if (response.status === 401) {
+          await clearTokens();
+        }
+        return false;
+      }
+      await saveTokens((await response.json()) as Tokens);
+      return true;
+    } finally {
+      refreshing = null;
+    }
+  })();
+  return refreshing;
+}
+
+export async function apiRequest<T>(
+  method: Method,
+  path: string,
+  options: RequestOptions = {},
+): Promise<T> {
+  let response = await send(method, path, options);
+
+  if (response.status === 401 && options.auth) {
+    if (await refreshSession()) {
+      response = await send(method, path, options);
+    } else {
+      notifySessionExpired();
+    }
+  }
+
+  if (!response.ok) {
+    throw await toApiError(response);
+  }
+  if (response.status === 204) {
+    return undefined as T;
+  }
+  return (await response.json()) as T;
 }

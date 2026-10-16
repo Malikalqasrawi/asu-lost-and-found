@@ -1,19 +1,17 @@
-import { INestApplication } from '@nestjs/common';
-import { App } from 'supertest/types.js';
 import { PrismaService } from '../src/prisma/prisma.service.js';
-import { createTestApp } from './support/app.js';
+import { createTestApp, TestContext } from './support/app.js';
 
 describe('database login used by the app', () => {
-  let app: INestApplication<App>;
+  let ctx: TestContext;
   let prisma: PrismaService;
 
   beforeAll(async () => {
-    app = await createTestApp();
-    prisma = app.get(PrismaService);
+    ctx = await createTestApp();
+    prisma = ctx.prisma;
   });
 
   afterAll(async () => {
-    await app.close();
+    await ctx.app.close();
   });
 
   it('connects as the limited app role', async () => {
