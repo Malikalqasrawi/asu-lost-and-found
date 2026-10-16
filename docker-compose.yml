@@ -1,0 +1,45 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: lostfound
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_ADMIN_PASSWORD:?Copy .env.example to .env and set DB_ADMIN_PASSWORD}
+      DB_PASSWORD: ${DB_PASSWORD:?Copy .env.example to .env and set DB_PASSWORD}
+      DB_APP_PASSWORD: ${DB_APP_PASSWORD:?Copy .env.example to .env and set DB_APP_PASSWORD}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - ./docker/postgres/create-roles.sh:/docker-entrypoint-initdb.d/create-roles.sh:ro
+    ports:
+      # This machine only, for running the backend or Prisma Studio outside Docker.
+      - "127.0.0.1:5434:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d lostfound"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  migrate:
+    build:
+      context: ./backend
+      target: migrate
+    environment:
+      MIGRATION_DATABASE_URL: postgresql://lostfound:${DB_PASSWORD}@db:5432/lostfound
+    depends_on:
+      db:
+        condition: service_healthy
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://lostfound_app:${DB_APP_PASSWORD}@db:5432/lostfound
+      PORT: 3000
+    ports:
+      - "${APP_BIND:-127.0.0.1}:4000:3000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  db-data:
