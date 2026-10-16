@@ -2,7 +2,7 @@
 
 A mobile app that helps students at Applied Science Private University get lost items back. Students post what they lost or found on campus, the app suggests matches between the two, and the real owner proves an item is theirs before it is handed over.
 
-> Work in progress. The project setup is done; the features below are being built in stages.
+> Work in progress. Accounts are done; the lost and found features are being built in stages.
 
 ## How it works
 
@@ -14,7 +14,7 @@ A mobile app that helps students at Applied Science Private University get lost 
 ## Planned features
 
 - [x] Project setup: API, database, mobile app, Docker, CI
-- [ ] Accounts with university email only, email verification, roles (student, security office, admin)
+- [x] Accounts with university email only, email verification, roles (student, security office, admin)
 - [ ] Lost and found posts with photos (blurred publicly, EXIF removed) and campus locations
 - [ ] Ownership claims with private questions, limited attempts and claim history
 - [ ] Handover: in-app messages, pickup code, security office desk
@@ -38,15 +38,21 @@ asu-lost-and-found/
 ├── backend/                 NestJS API
 │   ├── prisma/              schema and SQL migrations
 │   ├── src/
+│   │   ├── auth/            sign-up, email codes, sign-in, tokens, guards
+│   │   ├── cli/             set-role command
 │   │   ├── config/          environment validation
 │   │   ├── health/          GET /api/health
-│   │   └── prisma/          database client
+│   │   ├── mail/            email outbox and SMTP sender
+│   │   ├── prisma/          database client
+│   │   ├── rate-limit/      request limits
+│   │   └── users/           profiles and roles
 │   └── test/                integration tests on a real PostgreSQL
 ├── mobile/                  Expo app
 │   └── src/
-│       ├── api/             API client and queries
-│       ├── app/             screens (Expo Router)
-│       ├── components/
+│       ├── api/             API client with automatic token refresh
+│       ├── app/             screens (Expo Router): (auth) and (app) groups
+│       ├── components/      form fields, buttons, screen layout
+│       ├── session/         signed-in state and token storage
 │       └── test/
 ├── docker/postgres/         database setup script
 ├── docker-compose.yml
@@ -63,13 +69,21 @@ You need Docker, Node.js 24 or newer, and an Android emulator (or a phone with E
 cp .env.example .env
 ```
 
-Set `DB_ADMIN_PASSWORD`, `DB_PASSWORD` and `DB_APP_PASSWORD` in `.env`, each to a different output of `openssl rand -hex 24`. Then:
+Set `DB_ADMIN_PASSWORD`, `DB_PASSWORD` and `DB_APP_PASSWORD` in `.env`, each to a different output of `openssl rand -hex 24`, and `JWT_SECRET` to the output of `openssl rand -base64 48`. Then:
 
 ```bash
 docker compose up -d --build
 ```
 
-The API answers at http://localhost:4000/api/health with `{"status":"ok","database":"up"}`.
+The API answers at http://localhost:4000/api/health with `{"status":"ok","database":"up"}`. Emails (verification and password reset codes) go to the Mailpit inbox at http://localhost:8027 until you point the `MAIL_*` settings at a real SMTP server.
+
+### Making the first admin
+
+Everyone signs up as a student. To give an account another role (`STUDENT`, `SECURITY` or `ADMIN`):
+
+```bash
+docker compose exec backend node dist/cli/set-role.js you@asu.edu.jo ADMIN
+```
 
 ### 2. Mobile app
 
@@ -80,11 +94,11 @@ npm install
 npm run android
 ```
 
-The home screen shows **Server online** when the app reaches the API. The Android emulator reaches your computer at `10.0.2.2`; for a real phone, put your computer's network address in `mobile/.env` and set `APP_BIND=0.0.0.0` in the root `.env`.
+Create an account with an `@asu.edu.jo` address and read the code in Mailpit. The Android emulator reaches your computer at `10.0.2.2`; for a real phone, put your computer's network address in `mobile/.env` and set `APP_BIND=0.0.0.0` in the root `.env`.
 
 ### Running the API outside Docker
 
-With only the database running (`docker compose up -d db`), copy `backend/.env.example` to `backend/.env`, fill in the two passwords, and run:
+With only the database running (`docker compose up -d db`), copy `backend/.env.example` to `backend/.env`, fill in the passwords and a `JWT_SECRET`, and run:
 
 ```bash
 cd backend
@@ -93,6 +107,23 @@ npm run db:migrate
 npm run start:dev
 ```
 
+## API
+
+All routes start with `/api`. Everything except the ones marked public needs `Authorization: Bearer <access token>`.
+
+| Method and path | Public | What it does |
+| --- | --- | --- |
+| `POST /auth/register` | yes | Create an account with a university email; emails a 6-digit code |
+| `POST /auth/resend-code` | yes | Send a new verification code (at most one a minute) |
+| `POST /auth/verify-email` | yes | Email, password and code; verifies the email and signs in |
+| `POST /auth/login` | yes | Returns an access token (15 minutes) and a refresh token (30 days) |
+| `POST /auth/refresh` | yes | Swaps a refresh token for a new pair |
+| `POST /auth/logout` | yes | Ends the sign-in that the refresh token belongs to |
+| `POST /auth/forgot-password` | yes | Emails a password reset code |
+| `POST /auth/reset-password` | yes | Sets a new password with the code and signs out every device |
+| `GET /users/me` | no | The signed-in user's profile |
+| `GET /health` | yes | API and database status |
+
 ## Tests
 
 | Command | Folder | What it runs |
@@ -100,17 +131,31 @@ npm run start:dev
 | `npm test` | `backend/` | Unit tests |
 | `npm run test:e2e` | `backend/` | API tests against PostgreSQL 17 in Docker (Testcontainers) |
 | `npm run lint` / `npm run typecheck` | `backend/`, `mobile/` | oxlint or ESLint, TypeScript |
-| `npm test` | `mobile/` | Component and API client tests |
+| `npm test` | `mobile/` | Sign-in flows on the real screens, API client and token refresh |
 
 GitHub Actions runs all of them on every pull request, plus a gitleaks secret scan and a Docker build that starts the whole stack and calls the health endpoint.
 
 ## Security
 
 - Three database logins: the `postgres` superuser only creates the database, `lostfound` owns it and runs the migrations, and the API connects as `lostfound_app`, which can read and write rows but cannot create, change or drop tables. Neither of the last two is a superuser; integration tests check all of this.
+- Only university emails can sign up, and an account works only after the emailed 6-digit code is entered. Codes are stored hashed, expire after 15 minutes and allow 5 tries. Each account gets at most 5 codes and 15 wrong guesses a day, so asking for new codes doesn't give an attacker more tries.
+- Verifying an email needs the password as well as the code, so nobody can sign up with someone else's email first and take the account over once the real owner verifies it.
+- Passwords hashed with bcrypt (cost 12). Sign-in gives the same answer for a wrong password and an unknown email, and takes the same time. Sign-up, resending a code and password reset give the same answer whether or not an email has an account. Emails never include text typed into the sign-up form, and names may only contain letters, spaces, apostrophes, dots and hyphens.
+- Short-lived access tokens (JWT, HS256) and refresh tokens that work once: each refresh replaces the token, and reusing an old one ends that whole sign-in. Refresh tokens are stored hashed. Changing the password signs out every device and ends access tokens issued before it. In the app the refresh token lives in the device's secure storage.
+- Every route needs a signed-in user unless it is marked public, and the user is checked against the database on every request. Roles are checked by a guard; extra fields such as `role` in a sign-up request are refused.
+- Rate limits per network address: 10 requests an hour that send an email, and 10 password or code attempts every 15 minutes (both set in `.env`).
+- Emails go through an outbox table in the same transaction as the change that triggers them, and are retried with backoff if the mail server is down.
+- Emails to a real mail server must use TLS; only the local Mailpit inbox is allowed plain SMTP.
 - Configuration comes from environment variables and is validated at startup. Secrets live only in git-ignored `.env` files; the repository has `.env.example` copies.
 - Security headers through Helmet, request bodies validated and stripped of unknown fields.
 - The database and API ports listen on this machine only unless `APP_BIND` says otherwise.
 - The Docker images run as a non-root user, and the API image holds only production packages (no Prisma CLI or TypeScript).
+
+## Known limits
+
+- Rate limits are kept in memory, so they assume a single API server. Behind a proxy the API would also need to trust its forwarded address, or every request would count as the proxy's.
+- Signing up again with an email that is still waiting for verification replaces the password, so someone who knows a classmate is signing up can make the classmate's code fail until they sign up once more. It can't be used to take the account over, because verifying needs the password together with the emailed code.
+- Response times of the password reset and resend-code endpoints differ by a few milliseconds between existing and unknown emails.
 
 ## Author
 

@@ -82,6 +82,7 @@ jobs:
             echo "DB_ADMIN_PASSWORD=$(openssl rand -hex 24)"
             echo "DB_PASSWORD=$(openssl rand -hex 24)"
             echo "DB_APP_PASSWORD=$(openssl rand -hex 24)"
+            echo "JWT_SECRET=$(openssl rand -base64 48 | tr -d '\n')"
           } > .env
 
       - name: Build the images and start the stack

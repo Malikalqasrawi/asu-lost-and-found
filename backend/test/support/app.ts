@@ -1,15 +1,42 @@
 import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import request from 'supertest';
 import { App } from 'supertest/types.js';
 import { AppModule } from '../../src/app.module.js';
 import { configureApp } from '../../src/app.setup.js';
+import { MailSender } from '../../src/mail/mail-sender.js';
+import { OutboxService } from '../../src/mail/outbox.service.js';
+import { OutboxWorker } from '../../src/mail/outbox.worker.js';
+import { PrismaService } from '../../src/prisma/prisma.service.js';
+import { FakeMailSender } from './fake-mail-sender.js';
 
-export async function createTestApp(): Promise<INestApplication<App>> {
-  const moduleRef = await Test.createTestingModule({
-    imports: [AppModule],
-  }).compile();
+export interface TestContext {
+  app: INestApplication<App>;
+  mailer: FakeMailSender;
+  outbox: OutboxService;
+  prisma: PrismaService;
+  http: () => ReturnType<typeof request>;
+}
+
+export async function createTestApp(): Promise<TestContext> {
+  const mailer = new FakeMailSender();
+  const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+    .overrideProvider(MailSender)
+    .useValue(mailer)
+    // Tests send queued emails themselves with outbox.processDue().
+    .overrideProvider(OutboxWorker)
+    .useValue({})
+    .compile();
+
   const app = moduleRef.createNestApplication<INestApplication<App>>();
   configureApp(app);
   await app.init();
-  return app;
+
+  return {
+    app,
+    mailer,
+    outbox: app.get(OutboxService),
+    prisma: app.get(PrismaService),
+    http: () => request(app.getHttpServer()),
+  };
 }

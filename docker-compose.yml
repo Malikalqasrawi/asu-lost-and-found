@@ -19,6 +19,15 @@ services:
       timeout: 3s
       retries: 10
 
+  # Catches every email the API sends; open http://localhost:8027 to read them.
+  # Point the MAIL_* settings in .env at a real SMTP server to deliver them instead.
+  mailpit:
+    image: axllent/mailpit:v1.31.4
+    ports:
+      - "127.0.0.1:8027:8025"
+      # SMTP, for a backend started with npm run start:dev.
+      - "127.0.0.1:1027:1025"
+
   migrate:
     build:
       context: ./backend
@@ -35,11 +44,23 @@ services:
     environment:
       DATABASE_URL: postgresql://lostfound_app:${DB_APP_PASSWORD}@db:5432/lostfound
       PORT: 3000
+      JWT_SECRET: ${JWT_SECRET:?Copy .env.example to .env and set JWT_SECRET}
+      ALLOWED_EMAIL_DOMAINS: ${ALLOWED_EMAIL_DOMAINS:-asu.edu.jo}
+      MAIL_HOST: ${MAIL_HOST:-mailpit}
+      MAIL_PORT: ${MAIL_PORT:-1025}
+      MAIL_SECURE: ${MAIL_SECURE:-false}
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      MAIL_FROM: "${MAIL_FROM:-ASU Lost & Found <no-reply@asu-lost-found.local>}"
+      RATE_LIMIT_EMAILS_PER_HOUR: ${RATE_LIMIT_EMAILS_PER_HOUR:-10}
+      RATE_LIMIT_LOGINS_PER_15_MIN: ${RATE_LIMIT_LOGINS_PER_15_MIN:-10}
     ports:
       - "${APP_BIND:-127.0.0.1}:4000:3000"
     depends_on:
       migrate:
         condition: service_completed_successfully
+      mailpit:
+        condition: service_started
 
 volumes:
   db-data:
