@@ -3,6 +3,7 @@ import { validateEnv } from './env.validation.js';
 const required = {
   DATABASE_URL: 'postgresql://app@localhost:5432/lostfound',
   JWT_SECRET: 'x'.repeat(32),
+  SERIAL_HASH_KEY: 's'.repeat(32),
 };
 
 describe('validateEnv', () => {
@@ -40,12 +41,21 @@ describe('validateEnv', () => {
   });
 
   it('rejects a missing or short jwt secret', () => {
-    expect(() => validateEnv({ DATABASE_URL: required.DATABASE_URL })).toThrow(
+    expect(() => validateEnv({ ...required, JWT_SECRET: undefined })).toThrow(
       /JWT_SECRET/,
     );
     expect(() => validateEnv({ ...required, JWT_SECRET: 'too-short' })).toThrow(
       /JWT_SECRET/,
     );
+  });
+
+  it('rejects a missing or short serial hash key', () => {
+    expect(() =>
+      validateEnv({ ...required, SERIAL_HASH_KEY: undefined }),
+    ).toThrow(/SERIAL_HASH_KEY/);
+    expect(() =>
+      validateEnv({ ...required, SERIAL_HASH_KEY: 'too-short' }),
+    ).toThrow(/SERIAL_HASH_KEY/);
   });
 
   it('reads MAIL_SECURE as a real boolean', () => {

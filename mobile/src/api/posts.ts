@@ -8,7 +8,7 @@ import {
 import { apiRequest, apiUrl } from '@/api/client';
 
 export type PostType = 'LOST' | 'FOUND';
-export type PostStatus = 'OPEN' | 'RETURNED' | 'CLOSED';
+export type PostStatus = 'OPEN' | 'CLAIMED' | 'RETURNED' | 'CLOSED';
 export type Category =
   | 'PHONE'
   | 'LAPTOP'
@@ -40,6 +40,7 @@ export interface Post {
   createdAt: string;
   author: { firstName: string };
   isMine: boolean;
+  canSeeOriginals: boolean;
   photoIds: string[];
 }
 
@@ -61,6 +62,10 @@ export interface NewPost {
   placeDetails: string;
   happenedOn: string;
   photos: PickedPhoto[];
+  /** Found items only. */
+  questions: string[];
+  privateNotes: string;
+  serialNumber: string;
 }
 
 export interface PostFilters {
@@ -76,11 +81,14 @@ export function photoUrl(photoId: string, original = false): string {
 
 function toFormData(post: NewPost): FormData {
   const form = new FormData();
-  const { photos, ...fields } = post;
+  const { photos, questions, ...fields } = post;
   for (const [name, value] of Object.entries(fields)) {
     if (value !== '') {
       form.append(name, value);
     }
+  }
+  for (const question of questions) {
+    form.append('questions', question);
   }
   photos.forEach((photo, index) => {
     // React Native uploads a file from this { uri, name, type } shape.

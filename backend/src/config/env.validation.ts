@@ -26,6 +26,10 @@ export class EnvironmentVariables {
   @MinLength(32, { message: 'JWT_SECRET must be at least 32 characters' })
   JWT_SECRET: string;
 
+  @IsString()
+  @MinLength(32, { message: 'SERIAL_HASH_KEY must be at least 32 characters' })
+  SERIAL_HASH_KEY: string;
+
   @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' ? value.toLowerCase().replace(/\s+/g, '') : value,
   )

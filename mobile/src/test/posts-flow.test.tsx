@@ -35,6 +35,7 @@ function post(overrides: Partial<Post> = {}): Post {
     createdAt: '2026-10-16T10:00:00.000Z',
     author: { firstName: 'Sara' },
     isMine: false,
+    canSeeOriginals: false,
     photoIds: [],
     ...overrides,
   };
@@ -48,6 +49,7 @@ async function fillInFoundWallet() {
   await press('Wallet');
   await screen.findByRole('button', { name: 'Library' });
   await press('Library');
+  await fireEvent.changeText(screen.getByLabelText('Question 1'), 'What is inside it?');
 }
 
 function pickOnePhoto() {
@@ -106,6 +108,12 @@ describe('lost and found posts', () => {
       assets: [{ uri: 'file:///photos/wallet.jpg', width: 800, height: 600 }],
     } as ImagePicker.ImagePickerResult);
     let sent: [string, unknown][] = [];
+    const myFoundWallet = post({
+      id: 'post-9',
+      isMine: true,
+      canSeeOriginals: true,
+      photoIds: ['photo-1'],
+    });
     fetchMock = mockApi({
       ...signedIn,
       'GET /posts': () => [200, { items: [], nextCursor: null }],
@@ -114,9 +122,9 @@ describe('lost and found posts', () => {
         sent = (form as unknown as { getParts(): { fieldName: string; string?: string; uri?: string }[] })
           .getParts()
           .map((part) => [part.fieldName, part.string ?? part.uri]);
-        return [201, post({ id: 'post-9', isMine: true, photoIds: ['photo-1'] })];
+        return [201, myFoundWallet];
       },
-      'GET /posts/post-9': () => [200, post({ id: 'post-9', isMine: true, photoIds: ['photo-1'] })],
+      'GET /posts/post-9': () => [200, myFoundWallet],
     });
     await renderRouter('./src/app');
     await press('Post an item');
@@ -128,6 +136,13 @@ describe('lost and found posts', () => {
     await screen.findByRole('button', { name: 'Library' });
     await press('Library');
     await fireEvent.changeText(screen.getByLabelText('More about the place (optional)'), 'Second floor');
+    await fireEvent.changeText(screen.getByLabelText('Question 1'), 'What is inside it?');
+    await press('Add a question');
+    await fireEvent.changeText(screen.getByLabelText('Question 2'), 'What colour is the zip?');
+    await fireEvent.changeText(
+      screen.getByLabelText('Private notes (only you see these)'),
+      'Student ID of Lina, two receipts',
+    );
     await press('Choose photos');
     await screen.findByLabelText('Photo 1');
     await press('Post');
@@ -143,9 +158,13 @@ describe('lost and found posts', () => {
         ['placeId', 'place-library'],
         ['placeDetails', 'Second floor'],
         ['photos', 'file:///photos/wallet.jpg'],
+        ['questions', 'What is inside it?'],
+        ['questions', 'What colour is the zip?'],
+        ['privateNotes', 'Student ID of Lina, two receipts'],
       ]),
     );
     expect(sent.map(([name]) => name)).not.toContain('description');
+    expect(sent.map(([name]) => name)).not.toContain('serialNumber');
   });
 
   it('checks the form before posting', async () => {
@@ -166,11 +185,50 @@ describe('lost and found posts', () => {
     expect(requestsTo(fetchMock, 'POST', '/posts')).toHaveLength(0);
   });
 
+  it('asks the finder for a question only the owner can answer', async () => {
+    fetchMock = mockApi({
+      ...signedIn,
+      'GET /posts': () => [200, { items: [], nextCursor: null }],
+      'GET /places': () => [200, places],
+    });
+    await renderRouter('./src/app');
+    await fillInFoundWallet();
+    await fireEvent.changeText(screen.getByLabelText('Question 1'), '   ');
+
+    await press('Post');
+
+    expect(
+      screen.getByText('Add at least one question only the owner can answer.'),
+    ).toBeOnTheScreen();
+    await fireEvent.changeText(screen.getByLabelText('Question 1'), 'Why?');
+    expect(screen.getByText('Each question needs at least 5 characters.')).toBeOnTheScreen();
+    expect(requestsTo(fetchMock, 'POST', '/posts')).toHaveLength(0);
+  });
+
+  it('asks for the serial number only for electronics', async () => {
+    fetchMock = mockApi({
+      ...signedIn,
+      'GET /posts': () => [200, { items: [], nextCursor: null }],
+      'GET /places': () => [200, places],
+    });
+    await renderRouter('./src/app');
+    await fillInFoundWallet();
+    expect(screen.queryByLabelText('Serial number or IMEI (optional)')).toBeNull();
+
+    await press('Phone');
+
+    expect(screen.getByLabelText('Serial number or IMEI (optional)')).toBeOnTheScreen();
+  });
+
   it("shows someone else's found post without a close button", async () => {
     fetchMock = mockApi({
       ...signedIn,
       'GET /posts': () => [200, { items: [post()], nextCursor: null }],
       'GET /posts/post-1': () => [200, post()],
+      'GET /posts/post-1/claim-form': () => [
+        200,
+        { questions: [], serialRequired: false, attemptsLeft: 3, activeClaim: null },
+      ],
     });
     await renderRouter('./src/app');
 
@@ -179,7 +237,7 @@ describe('lost and found posts', () => {
 
     expect(await screen.findByText('Library, Second floor')).toBeOnTheScreen();
     expect(screen.getByText('Sara')).toBeOnTheScreen();
-    expect(screen.getByText(/Is this yours\?/)).toBeOnTheScreen();
+    expect(await screen.findByRole('button', { name: 'This is mine' })).toBeOnTheScreen();
     expect(screen.queryByRole('button', { name: 'Close post' })).toBeNull();
   });
 

@@ -16,6 +16,8 @@ import {
   ListPostsQuery,
   UpdatePostDto,
 } from './dto/post.dto.js';
+import { ClaimsService } from '../claims/claims.service.js';
+import { SerialHasher } from '../claims/serial.js';
 import { parseCursor, toCursor } from './cursor.js';
 import { canView } from './post-visibility.js';
 import { POST_INCLUDE, PostView, toPostView } from './post-view.js';
@@ -27,6 +29,43 @@ const EARLIEST_DATE = '2020-01-01';
 export interface PostPage {
   items: PostView[];
   nextCursor: string | null;
+}
+
+/** Questions, private notes and a serial number belong to found items only. */
+function checkFoundItemDetails(dto: CreatePostDto): void {
+  const hasDetails = Boolean(
+    dto.questions || dto.privateNotes || dto.serialNumber,
+  );
+  if (dto.type === 'LOST' && hasDetails) {
+    throw new BadRequestException(
+      'Questions, private notes and serial numbers are only for found items',
+    );
+  }
+  if (dto.type === 'FOUND' && !dto.questions?.length) {
+    throw new BadRequestException(
+      'Add at least one question that only the owner can answer',
+    );
+  }
+}
+
+function foundItemDetails(dto: CreatePostDto, serials: SerialHasher) {
+  if (dto.type !== 'FOUND') {
+    return {};
+  }
+  return {
+    secret: {
+      create: {
+        privateNotes: dto.privateNotes ?? '',
+        serialHash: dto.serialNumber ? serials.hash(dto.serialNumber) : null,
+      },
+    },
+    questions: {
+      create: (dto.questions ?? []).map((text, position) => ({
+        text,
+        position,
+      })),
+    },
+  };
 }
 
 function parseHappenedOn(value: string): Date {
@@ -52,6 +91,8 @@ export class PostsService {
     private readonly prisma: PrismaService,
     private readonly places: PlacesService,
     private readonly photos: PhotosService,
+    private readonly serials: SerialHasher,
+    private readonly claims: ClaimsService,
   ) {}
 
   async create(
@@ -60,6 +101,7 @@ export class PostsService {
     photos: Buffer[],
   ): Promise<PostView> {
     const happenedOn = parseHappenedOn(dto.happenedOn);
+    checkFoundItemDetails(dto);
     await this.checkPlace(dto.placeId);
     await this.checkDailyLimit(this.prisma, authorId);
 
@@ -87,6 +129,7 @@ export class PostsService {
             photos: {
               create: stored.map((photo, position) => ({ ...photo, position })),
             },
+            ...foundItemDetails(dto, this.serials),
           },
           include: POST_INCLUDE,
         });
@@ -158,7 +201,10 @@ export class PostsService {
     if (!post || !canView(post, viewerId)) {
       throw new NotFoundException('This post does not exist or was closed.');
     }
-    return toPostView(post, viewerId);
+    const acceptedClaims = await this.prisma.claim.count({
+      where: { postId: id, claimantId: viewerId, status: 'ACCEPTED' },
+    });
+    return toPostView(post, viewerId, acceptedClaims > 0);
   }
 
   async update(
@@ -190,11 +236,14 @@ export class PostsService {
   }
 
   async close(id: string, authorId: string): Promise<PostView> {
-    await this.findOpenPostOf(id, authorId);
-    const post = await this.prisma.post.update({
-      where: { id },
-      data: { status: 'CLOSED' },
-      include: POST_INCLUDE,
+    const open = await this.findOpenPostOf(id, authorId);
+    const post = await this.prisma.$transaction(async (tx) => {
+      await this.claims.closeForPost(tx, id, open.title);
+      return tx.post.update({
+        where: { id },
+        data: { status: 'CLOSED' },
+        include: POST_INCLUDE,
+      });
     });
     return toPostView(post, authorId);
   }

@@ -1,4 +1,3 @@
-import DateTimePicker from '@react-native-community/datetimepicker';
 import { useRouter } from 'expo-router';
 import { useState, type ReactNode } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
@@ -6,28 +5,74 @@ import { ScrollView, StyleSheet, View } from 'react-native';
 import { errorMessage } from '@/api/errors';
 import { useCreatePost, usePlaces, type Category, type PostType } from '@/api/posts';
 import { Button } from '@/components/button';
-import { Chip } from '@/components/chip';
+import { ChoiceChips, type Choice } from '@/components/choice-chips';
+import { DayPicker } from '@/components/day-picker';
 import { FormMessage } from '@/components/form-message';
+import { FoundItemDetails, type FoundItemSecrets } from '@/components/found-item-details';
 import { PhotoPicker } from '@/components/photo-picker';
 import { TextField } from '@/components/text-field';
 import { ThemedText } from '@/components/themed-text';
-import { categoryLabels, formatDay, localIsoDate } from '@/constants/labels';
+import { categoryLabels, daysAgo } from '@/constants/labels';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { usePhotoPicker } from '@/media/use-photo-picker';
 
 const MAX_PHOTOS = 4;
-const categories = Object.keys(categoryLabels) as Category[];
+
+const typeChoices: Choice<PostType>[] = [
+  { value: 'LOST', label: 'I lost something' },
+  { value: 'FOUND', label: 'I found something' },
+];
+const categoryChoices = Object.entries(categoryLabels).map(([value, label]) => ({
+  value: value as Category,
+  label,
+}));
+
+const SERIAL_CATEGORIES: (Category | null)[] = ['PHONE', 'LAPTOP', 'ELECTRONICS'];
+const noSecrets: FoundItemSecrets = { questions: [''], privateNotes: '', serialNumber: '' };
+const descriptionHints: Record<PostType, string> = {
+  LOST: 'Anything that helps someone recognise it.',
+  FOUND: 'Describe it, but keep the details only the owner would know to yourself.',
+};
 
 interface Draft {
   type: PostType | null;
   title: string;
   category: Category | null;
   placeId: string | null;
+  questions: string[];
+}
+
+const asked = (questions: string[]) => questions.map((question) => question.trim()).filter(Boolean);
+
+function questionsError(draft: Draft): string | undefined {
+  if (draft.type !== 'FOUND') {
+    return undefined;
+  }
+  const questions = asked(draft.questions);
+  if (questions.length === 0) {
+    return 'Add at least one question only the owner can answer.';
+  }
+  return questions.every((question) => question.length >= 5)
+    ? undefined
+    : 'Each question needs at least 5 characters.';
+}
+
+/** The found-item details to send; a lost item sends none. */
+function secretsFor(type: PostType, category: Category, secrets: FoundItemSecrets) {
+  if (type !== 'FOUND') {
+    return { questions: [], privateNotes: '', serialNumber: '' };
+  }
+  return {
+    questions: asked(secrets.questions),
+    privateNotes: secrets.privateNotes.trim(),
+    serialNumber: SERIAL_CATEGORIES.includes(category) ? secrets.serialNumber.trim() : '',
+  };
 }
 
 function validate(draft: Draft) {
   return {
+    questions: questionsError(draft),
     type: draft.type ? undefined : 'Choose lost or found.',
     title:
       draft.title.trim().length >= 3 ? undefined : 'Give it a short title, like "Black wallet".',
@@ -36,16 +81,25 @@ function validate(draft: Draft) {
   };
 }
 
-function daysAgo(days: number): string {
-  const date = new Date();
-  date.setDate(date.getDate() - days);
-  return localIsoDate(date);
+const blurHint =
+  'Other students see your photos blurred, so only the real owner knows the details.';
+
+interface SectionProps {
+  label: string;
+  hint?: string;
+  error?: string;
+  children: ReactNode;
 }
 
-function Section({ label, error, children }: { label: string; error?: string; children: ReactNode }) {
+function Section({ label, hint, error, children }: SectionProps) {
   return (
     <View style={styles.section}>
       <ThemedText type="smallBold">{label}</ThemedText>
+      {hint ? (
+        <ThemedText type="small" themeColor="textSecondary">
+          {hint}
+        </ThemedText>
+      ) : null}
       {children}
       {error ? (
         <ThemedText type="small" themeColor="danger">
@@ -56,37 +110,49 @@ function Section({ label, error, children }: { label: string; error?: string; ch
   );
 }
 
+interface PlaceSectionProps {
+  value: string | null;
+  onChange: (placeId: string) => void;
+  error?: string;
+}
+
+function PlaceSection({ value, onChange, error }: PlaceSectionProps) {
+  const places = usePlaces();
+  const choices = (places.data ?? []).map((place) => ({ value: place.id, label: place.name }));
+  return (
+    <Section label="Where?" error={error}>
+      {places.isError ? <FormMessage message={errorMessage(places.error)} /> : null}
+      <ChoiceChips choices={choices} selected={value} onSelect={onChange} />
+    </Section>
+  );
+}
+
 export default function NewPostScreen() {
   const theme = useTheme();
   const router = useRouter();
-  const places = usePlaces();
   const createPost = useCreatePost();
   const photos = usePhotoPicker(MAX_PHOTOS);
-  const today = daysAgo(0);
-  const yesterday = daysAgo(1);
 
   const [type, setType] = useState<PostType | null>(null);
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState<Category | null>(null);
   const [placeId, setPlaceId] = useState<string | null>(null);
   const [placeDetails, setPlaceDetails] = useState('');
-  const [happenedOn, setHappenedOn] = useState(today);
-  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [happenedOn, setHappenedOn] = useState(() => daysAgo(0));
   const [description, setDescription] = useState('');
+  const [secrets, setSecrets] = useState(noSecrets);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const errors = validate({ type, title, category, placeId });
+  const errors = validate({ type, title, category, placeId, questions: secrets.questions });
   const shownErrors: Partial<typeof errors> = submitted ? errors : {};
-  const pickedEarlier = happenedOn !== today && happenedOn !== yesterday;
 
   function submit() {
     setSubmitted(true);
     setError(null);
-    if (!type || !category || !placeId || errors.title) {
+    if (!type || !category || !placeId || errors.title || errors.questions) {
       return;
     }
-
     createPost.mutate(
       {
         type,
@@ -97,6 +163,7 @@ export default function NewPostScreen() {
         placeDetails: placeDetails.trim(),
         happenedOn,
         photos: photos.photos,
+        ...secretsFor(type, category, secrets),
       },
       {
         onSuccess: (post) => router.replace(`/posts/${post.id}`),
@@ -111,14 +178,9 @@ export default function NewPostScreen() {
       contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled">
       <FormMessage message={error} />
-
       <Section label="What happened?" error={shownErrors.type}>
-        <View style={styles.wrap}>
-          <Chip label="I lost something" selected={type === 'LOST'} onPress={() => setType('LOST')} />
-          <Chip label="I found something" selected={type === 'FOUND'} onPress={() => setType('FOUND')} />
-        </View>
+        <ChoiceChips choices={typeChoices} selected={type} onSelect={setType} />
       </Section>
-
       <TextField
         label="Title"
         placeholder="Black leather wallet"
@@ -127,33 +189,10 @@ export default function NewPostScreen() {
         error={shownErrors.title}
         maxLength={80}
       />
-
       <Section label="Category" error={shownErrors.category}>
-        <View style={styles.wrap}>
-          {categories.map((value) => (
-            <Chip
-              key={value}
-              label={categoryLabels[value]}
-              selected={category === value}
-              onPress={() => setCategory(value)}
-            />
-          ))}
-        </View>
+        <ChoiceChips choices={categoryChoices} selected={category} onSelect={setCategory} />
       </Section>
-
-      <Section label="Where?" error={shownErrors.place}>
-        {places.isError ? <FormMessage message={errorMessage(places.error)} /> : null}
-        <View style={styles.wrap}>
-          {(places.data ?? []).map((place) => (
-            <Chip
-              key={place.id}
-              label={place.name}
-              selected={placeId === place.id}
-              onPress={() => setPlaceId(place.id)}
-            />
-          ))}
-        </View>
-      </Section>
+      <PlaceSection value={placeId} onChange={setPlaceId} error={shownErrors.place} />
       <TextField
         label="More about the place (optional)"
         placeholder="Second floor, near the printers"
@@ -161,65 +200,32 @@ export default function NewPostScreen() {
         onChangeText={setPlaceDetails}
         maxLength={120}
       />
-
       <Section label="When?">
-        <View style={styles.wrap}>
-          <Chip label="Today" selected={happenedOn === today} onPress={() => setHappenedOn(today)} />
-          <Chip
-            label="Yesterday"
-            selected={happenedOn === yesterday}
-            onPress={() => setHappenedOn(yesterday)}
-          />
-          <Chip
-            label={pickedEarlier ? formatDay(happenedOn) : 'Earlier'}
-            selected={pickedEarlier}
-            onPress={() => setShowDatePicker(true)}
-          />
-        </View>
-        {showDatePicker ? (
-          <DateTimePicker
-            value={new Date(`${happenedOn}T12:00:00`)}
-            mode="date"
-            maximumDate={new Date()}
-            onChange={(_event, picked) => {
-              setShowDatePicker(false);
-              if (picked) {
-                setHappenedOn(localIsoDate(picked));
-              }
-            }}
-          />
-        ) : null}
+        <DayPicker value={happenedOn} onChange={setHappenedOn} />
       </Section>
-
       <TextField
         label="Description (optional)"
-        placeholder={
-          type === 'FOUND'
-            ? 'Describe it, but keep the details only the owner would know to yourself.'
-            : 'Anything that helps someone recognise it.'
-        }
+        placeholder={descriptionHints[type ?? 'LOST']}
         value={description}
         onChangeText={setDescription}
         multiline
         maxLength={1000}
         style={styles.multiline}
       />
-
-      <Section label={`Photos (up to ${MAX_PHOTOS})`}>
-        {type === 'FOUND' ? (
-          <ThemedText type="small" themeColor="textSecondary">
-            Other students see your photos blurred, so only the real owner knows the details.
-          </ThemedText>
-        ) : null}
+      {type === 'FOUND' ? (
+        <FoundItemDetails
+          value={secrets}
+          onChange={setSecrets}
+          showSerial={SERIAL_CATEGORIES.includes(category)}
+          questionsError={shownErrors.questions}
+        />
+      ) : null}
+      <Section
+        label={`Photos (up to ${MAX_PHOTOS})`}
+        hint={type === 'FOUND' ? blurHint : undefined}>
         <PhotoPicker picker={photos} />
       </Section>
-
-      <Button
-        title="Post"
-        onPress={submit}
-        loading={createPost.isPending}
-        disabled={photos.preparing}
-      />
+      <Button title="Post" onPress={submit} loading={createPost.isPending} disabled={photos.preparing} />
     </ScrollView>
   );
 }
@@ -233,6 +239,5 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
   section: { gap: Spacing.two },
-  wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
   multiline: { minHeight: 96, textAlignVertical: 'top' },
 });

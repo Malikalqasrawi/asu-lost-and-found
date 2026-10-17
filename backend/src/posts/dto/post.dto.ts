@@ -1,6 +1,9 @@
 import { applyDecorators } from '@nestjs/common';
 import { Transform, Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  IsArray,
   IsEnum,
   IsInt,
   IsOptional,
@@ -12,6 +15,7 @@ import {
   Min,
   ValidateIf,
 } from 'class-validator';
+import { SERIAL_PATTERN } from '../../claims/serial.js';
 import { TextLength } from '../../common/text-length.js';
 import { trim } from '../../common/transforms.js';
 import { Category, PostType } from '../../generated/prisma/client.js';
@@ -48,6 +52,14 @@ const Day = () =>
     message: 'happenedOn must be a date like 2026-10-16',
   });
 
+// A form field sent once arrives as a string and sent several times as an array.
+const asList = ({ value }: { value: unknown }) =>
+  value === undefined
+    ? undefined
+    : [value]
+        .flat()
+        .map((item) => (typeof item === 'string' ? item.trim() : item));
+
 // Like @IsOptional, but a field sent as null is still checked (and refused),
 // instead of reaching the database as null.
 const IfPresent = () => ValidateIf((_object, value) => value !== undefined);
@@ -75,6 +87,37 @@ export class CreatePostDto {
 
   @Day()
   happenedOn: string;
+
+  /** Found items: questions that only the owner can answer. */
+  @IsOptional()
+  @Transform(asList)
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(3, { message: 'Ask at most 3 questions' })
+  @TextLength(5, 200, {
+    message: 'Each question must be 5 to 200 characters on one line',
+    each: true,
+  })
+  questions?: string[];
+
+  /** Found items: details only the finder sees, to compare claims with. */
+  @IsOptional()
+  @Transform(trim)
+  @IsString()
+  @TextLength(0, 1000, {
+    message: 'The private notes can be at most 1000 characters',
+    multiline: true,
+  })
+  privateNotes?: string;
+
+  /** Found electronics: the serial number or IMEI, kept only as a hash. */
+  @IsOptional()
+  @IsString()
+  @Matches(SERIAL_PATTERN, {
+    message:
+      'The serial number needs at least 4 letters or digits; it can also have spaces and dashes',
+  })
+  serialNumber?: string;
 }
 
 export class UpdatePostDto {
