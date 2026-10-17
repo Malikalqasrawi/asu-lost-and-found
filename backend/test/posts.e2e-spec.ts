@@ -30,6 +30,9 @@ describe('posts and photos', () => {
       happenedOn: today(),
       ...fields,
     };
+    if (values.type === 'FOUND' && !('questions' in fields)) {
+      request.field('questions', 'What is inside it?');
+    }
     for (const [name, value] of Object.entries(values)) {
       request.field(name, value);
     }

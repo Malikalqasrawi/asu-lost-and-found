@@ -57,7 +57,7 @@ export class PostsController {
       limits: {
         fileSize: MAX_PHOTO_BYTES,
         files: MAX_PHOTOS,
-        fields: 10,
+        fields: 16,
         fieldSize: 4096,
       },
     }),

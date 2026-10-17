@@ -1,6 +1,7 @@
 import * as SecureStore from 'expo-secure-store';
-import { fireEvent, renderRouter, screen, waitFor } from 'expo-router/testing-library';
+import { act, fireEvent, renderRouter, screen, waitFor } from 'expo-router/testing-library';
 
+import { queryClient } from '@/api/query-client';
 import { clearTokens } from '@/session/tokens';
 import { authResponse, emptyBrowse, mockApi, requestsTo } from '@/test/mock-api';
 import { press, type } from '@/test/screen';
@@ -189,6 +190,26 @@ describe('signing in and out', () => {
 
     expect(await screen.findByRole('header', { name: 'Sign in' })).toBeOnTheScreen();
     expect(await SecureStore.getItemAsync('refreshToken')).toBeNull();
+  });
+
+  it("forgets the student's data when the session ends while the app is open", async () => {
+    await SecureStore.setItemAsync('refreshToken', 'stored-refresh');
+    let ended = false;
+    fetchMock = mockApi({
+      'POST /auth/refresh': () =>
+        ended ? [401] : [200, { accessToken: 'access-2', refreshToken: 'refresh-2', expiresIn: 900 }],
+      'GET /users/me': () => [200, authResponse.user],
+      'GET /posts': () => (ended ? [401] : [200, { items: [], nextCursor: null }]),
+    });
+    await renderRouter('./src/app');
+    await screen.findByText('Hi, Ahmad');
+
+    ended = true;
+    await act(() => queryClient.refetchQueries({ queryKey: ['posts'] }));
+
+    expect(await screen.findByRole('header', { name: 'Sign in' })).toBeOnTheScreen();
+    const cachedPosts = queryClient.getQueryCache().findAll({ queryKey: ['posts'] });
+    expect(cachedPosts.every((query) => query.state.data === undefined)).toBe(true);
   });
 
   it('signs out, tells the server and forgets the token', async () => {

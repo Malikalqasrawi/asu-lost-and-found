@@ -95,10 +95,25 @@ export class PhotosService {
     return this.storage.read(photo.publicKey);
   }
 
-  /** The unblurred photo, only for the student who posted it. */
+  /** The unblurred photo, for the poster and the student whose claim they accepted. */
   async readOriginal(photoId: string, viewerId: string): Promise<Buffer> {
-    const photo = await this.findWithPost(photoId);
-    if (!photo || photo.post.authorId !== viewerId) {
+    const photo = await this.prisma.postPhoto.findUnique({
+      where: { id: photoId },
+      include: {
+        post: {
+          select: {
+            authorId: true,
+            claims: {
+              where: { claimantId: viewerId, status: 'ACCEPTED' },
+              select: { id: true },
+            },
+          },
+        },
+      },
+    });
+    const allowed =
+      photo?.post.authorId === viewerId || Boolean(photo?.post.claims.length);
+    if (!photo || !allowed) {
       throw new NotFoundException('This photo is not available.');
     }
     return this.storage.read(photo.originalKey);

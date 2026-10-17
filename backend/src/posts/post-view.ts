@@ -26,11 +26,18 @@ export interface PostView {
   createdAt: Date;
   author: { firstName: string };
   isMine: boolean;
+  /** The poster, or the student whose claim the poster accepted. */
+  canSeeOriginals: boolean;
   photoIds: string[];
 }
 
 /** Only the first name of the poster is shown; storage keys never leave the server. */
-export function toPostView(post: PostWithDetails, viewerId: string): PostView {
+export function toPostView(
+  post: PostWithDetails,
+  viewerId: string,
+  acceptedClaimant = false,
+): PostView {
+  const isMine = post.authorId === viewerId;
   return {
     id: post.id,
     type: post.type,
@@ -43,7 +50,8 @@ export function toPostView(post: PostWithDetails, viewerId: string): PostView {
     happenedOn: post.happenedOn.toISOString().slice(0, 10),
     createdAt: post.createdAt,
     author: { firstName: post.author.fullName.split(' ')[0] },
-    isMine: post.authorId === viewerId,
+    isMine,
+    canSeeOriginals: isMine || acceptedClaimant,
     photoIds: post.photos.map((photo) => photo.id),
   };
 }

@@ -32,6 +32,7 @@ describe('upload limits', () => {
       .post('/api/posts')
       .set('Authorization', `Bearer ${token}`)
       .field('type', 'FOUND')
+      .field('questions', 'What is inside it?')
       .field('title', 'Black leather wallet')
       .field('category', 'WALLET')
       .field('placeId', places[0].id)

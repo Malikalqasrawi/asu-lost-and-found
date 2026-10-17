@@ -62,6 +62,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
     restore();
     const stopListening = onSessionExpired(() => {
+      queryClient.clear();
       setUser(null);
       setStatus('signedOut');
     });
@@ -69,7 +70,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       active = false;
       stopListening();
     };
-  }, []);
+  }, [queryClient]);
 
   const signIn = useCallback(async (auth: AuthResponse) => {
     await saveTokens(auth);

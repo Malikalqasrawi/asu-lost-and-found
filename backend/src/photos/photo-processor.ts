@@ -1,4 +1,4 @@
-import sharp from 'sharp';
+import sharp, { type Metadata } from 'sharp';
 
 export const MAX_PHOTOS = 4;
 export const MAX_PHOTO_BYTES = 8 * 1024 * 1024;
@@ -21,36 +21,46 @@ export interface ProcessedPhoto {
   public: Buffer;
 }
 
+function isSupported(header: Metadata): boolean {
+  return (
+    ACCEPTED_FORMATS.has(header.format ?? '') &&
+    header.depth === 'uchar' &&
+    (header.pages ?? 1) === 1
+  );
+}
+
 /**
- * Reads only the header first, so a small file that unpacks into a huge or
- * 16-bit image is refused before any decoding work. Every accepted photo is
- * re-encoded as a new JPEG; sharp writes no metadata unless asked to, so EXIF
- * data such as the GPS position and the phone model is dropped.
+ * Reads only the header, so a small file that unpacks into a huge or 16-bit
+ * image is refused before any decoding work.
+ */
+async function checkHeader(input: Buffer): Promise<void> {
+  const header = await sharp(input)
+    .metadata()
+    .catch(() => null);
+  if (!header || !isSupported(header)) {
+    throw new UnsupportedPhotoError();
+  }
+  const pixels = (header.width ?? 0) * (header.height ?? 0);
+  if (pixels === 0) {
+    throw new UnsupportedPhotoError();
+  }
+  if (pixels > MAX_INPUT_PIXELS) {
+    throw new UnsupportedPhotoError(
+      'This photo is too large. Use one of at most 25 megapixels.',
+    );
+  }
+}
+
+/**
+ * Re-encodes every accepted photo as a new JPEG. sharp writes no metadata
+ * unless asked to, so EXIF data such as the GPS position and the phone model
+ * is dropped.
  */
 export async function processPhoto(
   input: Buffer,
   { blur }: { blur: boolean },
 ): Promise<ProcessedPhoto> {
-  const header = await sharp(input)
-    .metadata()
-    .catch(() => null);
-  if (
-    !header?.format ||
-    !ACCEPTED_FORMATS.has(header.format) ||
-    header.depth !== 'uchar' ||
-    (header.pages ?? 1) > 1
-  ) {
-    throw new UnsupportedPhotoError();
-  }
-  if (
-    !header.width ||
-    !header.height ||
-    header.width * header.height > MAX_INPUT_PIXELS
-  ) {
-    throw new UnsupportedPhotoError(
-      'This photo is too large. Use one of at most 25 megapixels.',
-    );
-  }
+  await checkHeader(input);
 
   try {
     const fit = { fit: 'inside', withoutEnlargement: true } as const;
