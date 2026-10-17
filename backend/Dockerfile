@@ -16,6 +16,10 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --omit=optional --ignore-scripts && npm cache clean --force
 COPY --from=build /app/dist ./dist
+# sharp's image library ships as optional packages for each platform, which the
+# install above leaves out. Copy the ones that were installed for this image.
+COPY --from=build /app/node_modules/@img ./node_modules/@img
+RUN mkdir -p /app/uploads && chown node:node /app/uploads
 USER node
 EXPOSE 3000
 CMD ["node", "dist/main.js"]

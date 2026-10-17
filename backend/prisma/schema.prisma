@@ -15,6 +15,31 @@ enum Role {
   ADMIN
 }
 
+enum PostType {
+  LOST
+  FOUND
+}
+
+enum PostStatus {
+  OPEN
+  RETURNED
+  CLOSED
+}
+
+enum Category {
+  PHONE
+  LAPTOP
+  WALLET
+  KEYS
+  BAG
+  ID_CARD
+  BOOKS
+  CLOTHING
+  ELECTRONICS
+  JEWELRY
+  OTHER
+}
+
 enum EmailCodePurpose {
   VERIFY_EMAIL
   RESET_PASSWORD
@@ -33,6 +58,7 @@ model User {
 
   emailCodes    EmailCode[]
   refreshTokens RefreshToken[]
+  posts         Post[]
 
   @@map("users")
 }
@@ -82,4 +108,52 @@ model OutboxEmail {
 
   @@index([nextAttemptAt])
   @@map("outbox_emails")
+}
+
+model CampusPlace {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  name      String   @unique
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  posts Post[]
+
+  @@map("campus_places")
+}
+
+model Post {
+  id           String     @id @default(uuid(7)) @db.Uuid
+  authorId     String     @map("author_id") @db.Uuid
+  type         PostType
+  status       PostStatus @default(OPEN)
+  title        String
+  description  String     @default("")
+  category     Category
+  placeId      String     @map("place_id") @db.Uuid
+  placeDetails String?    @map("place_details")
+  happenedOn   DateTime   @map("happened_on") @db.Date
+  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  author User        @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  place  CampusPlace @relation(fields: [placeId], references: [id])
+  photos PostPhoto[]
+
+  @@index([status, createdAt, id])
+  @@index([authorId, createdAt])
+  @@map("posts")
+}
+
+model PostPhoto {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  postId      String   @map("post_id") @db.Uuid
+  position    Int
+  originalKey String   @unique @map("original_key")
+  publicKey   String   @unique @map("public_key")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, position])
+  @@map("post_photos")
 }

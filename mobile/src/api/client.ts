@@ -1,4 +1,5 @@
 import {
+  accessTokenExpired,
   clearTokens,
   getAccessToken,
   getRefreshToken,
@@ -14,6 +15,7 @@ type Method = 'GET' | 'POST' | 'PATCH' | 'DELETE';
 interface RequestOptions {
   body?: unknown;
   auth?: boolean;
+  timeoutMs?: number;
 }
 
 export class ApiError extends Error {
@@ -27,6 +29,10 @@ export class ApiError extends Error {
   }
 }
 
+export function apiUrl(path: string): string {
+  return `${baseUrl()}${path}`;
+}
+
 function baseUrl(): string {
   const url = process.env.EXPO_PUBLIC_API_URL;
   if (!url) {
@@ -35,9 +41,14 @@ function baseUrl(): string {
   return url.replace(/\/+$/, '');
 }
 
-async function send(method: Method, path: string, { body, auth }: RequestOptions) {
+async function send(
+  method: Method,
+  path: string,
+  { body, auth, timeoutMs = REQUEST_TIMEOUT_MS }: RequestOptions,
+) {
   const headers: Record<string, string> = { Accept: 'application/json' };
-  if (body !== undefined) {
+  const isForm = body instanceof FormData;
+  if (body !== undefined && !isForm) {
     headers['Content-Type'] = 'application/json';
   }
   const token = auth ? getAccessToken() : null;
@@ -46,12 +57,12 @@ async function send(method: Method, path: string, { body, auth }: RequestOptions
   }
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     return await fetch(`${baseUrl()}${path}`, {
       method,
       headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: body === undefined || isForm ? (body as FormData | undefined) : JSON.stringify(body),
       signal: controller.signal,
     });
   } finally {
@@ -106,6 +117,9 @@ export async function apiRequest<T>(
   path: string,
   options: RequestOptions = {},
 ): Promise<T> {
+  if (options.auth && accessTokenExpired()) {
+    await refreshSession();
+  }
   let response = await send(method, path, options);
 
   if (response.status === 401 && options.auth) {

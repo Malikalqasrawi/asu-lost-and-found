@@ -2,17 +2,10 @@ import * as SecureStore from 'expo-secure-store';
 import { fireEvent, renderRouter, screen, waitFor } from 'expo-router/testing-library';
 
 import { clearTokens } from '@/session/tokens';
-import { authResponse, mockApi, requestsTo } from '@/test/mock-api';
+import { authResponse, emptyBrowse, mockApi, requestsTo } from '@/test/mock-api';
+import { press, type } from '@/test/screen';
 
 const { resetSecureStore } = SecureStore as unknown as { resetSecureStore: () => void };
-
-async function type(label: string, text: string) {
-  await fireEvent.changeText(screen.getByLabelText(label), text);
-}
-
-async function press(name: string) {
-  await fireEvent.press(screen.getByRole('button', { name }));
-}
 
 describe('signing in and out', () => {
   let fetchMock: jest.SpyInstance | undefined;
@@ -35,8 +28,8 @@ describe('signing in and out', () => {
     expect(await screen.findByRole('header', { name: 'Sign in' })).toBeOnTheScreen();
   });
 
-  it('signs in and shows the home screen', async () => {
-    fetchMock = mockApi({ 'POST /auth/login': () => [200, authResponse] });
+  it('signs in and shows the Browse screen', async () => {
+    fetchMock = mockApi({ 'POST /auth/login': () => [200, authResponse], ...emptyBrowse });
     await renderRouter('./src/app');
     await screen.findByRole('header', { name: 'Sign in' });
 
@@ -70,6 +63,7 @@ describe('signing in and out', () => {
       'POST /auth/login': () => [403, { message: 'Verify your email first.', code: 'EMAIL_NOT_VERIFIED' }],
       'POST /auth/resend-code': () => [202, { message: 'sent' }],
       'POST /auth/verify-email': () => [200, authResponse],
+      ...emptyBrowse,
     });
     await renderRouter('./src/app');
     await screen.findByRole('header', { name: 'Sign in' });
@@ -94,6 +88,7 @@ describe('signing in and out', () => {
     fetchMock = mockApi({
       'POST /auth/register': () => [202, { message: 'sent' }],
       'POST /auth/verify-email': () => [200, authResponse],
+      ...emptyBrowse,
     });
     await renderRouter('./src/app');
     await press('New here? Create an account');
@@ -175,9 +170,10 @@ describe('signing in and out', () => {
     fetchMock = mockApi({
       'POST /auth/refresh': (body) =>
         body.refreshToken === 'stored-refresh'
-          ? [200, { accessToken: 'access-2', refreshToken: 'refresh-2' }]
+          ? [200, { accessToken: 'access-2', refreshToken: 'refresh-2', expiresIn: 900 }]
           : [401],
       'GET /users/me': () => [200, authResponse.user],
+      ...emptyBrowse,
     });
 
     await renderRouter('./src/app');
@@ -199,6 +195,7 @@ describe('signing in and out', () => {
     fetchMock = mockApi({
       'POST /auth/login': () => [200, authResponse],
       'POST /auth/logout': () => [204],
+      ...emptyBrowse,
     });
     await renderRouter('./src/app');
     await screen.findByRole('header', { name: 'Sign in' });
@@ -206,6 +203,7 @@ describe('signing in and out', () => {
     await type('Password', 'correct-horse-42');
     await press('Sign in');
     await screen.findByText('Hi, Ahmad');
+    await fireEvent.press(screen.getByText('Account'));
 
     await press('Sign out');
 

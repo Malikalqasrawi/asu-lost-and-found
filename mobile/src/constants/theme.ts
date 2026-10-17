@@ -60,4 +60,5 @@ export const Spacing = {
   six: 64,
 } as const;
 
-export const MaxContentWidth = 800;
+export const MaxContentWidth = 640;
+export const MaxFormWidth = 480;

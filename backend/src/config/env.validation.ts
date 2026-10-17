@@ -59,6 +59,10 @@ export class EnvironmentVariables {
   @IsString()
   MAIL_FROM: string = 'ASU Lost & Found <no-reply@asu-lost-found.local>';
 
+  @IsString()
+  @MinLength(1)
+  UPLOAD_DIR: string = 'uploads';
+
   @IsInt()
   @Min(1)
   RATE_LIMIT_EMAILS_PER_HOUR: number = 10;
@@ -66,6 +70,10 @@ export class EnvironmentVariables {
   @IsInt()
   @Min(1)
   RATE_LIMIT_LOGINS_PER_15_MIN: number = 10;
+
+  @IsInt()
+  @Min(1)
+  RATE_LIMIT_UPLOADS_PER_MINUTE: number = 5;
 }
 
 export function validateEnv(
