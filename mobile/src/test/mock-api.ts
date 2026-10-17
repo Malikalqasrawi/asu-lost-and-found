@@ -1,4 +1,4 @@
-type Reply = [status: number, body?: unknown];
+export type Reply = [status: number, body?: unknown];
 type Handler = (body: any, headers: Record<string, string>) => Reply | Promise<Reply>;
 
 export const authResponse = {
@@ -23,7 +23,12 @@ export function mockApi(routes: Record<string, Handler>): jest.SpyInstance {
     if (!handler) {
       throw new Error(`Unexpected request: ${key}`);
     }
-    const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+    const body =
+      init?.body instanceof FormData
+        ? init.body
+        : init?.body
+          ? JSON.parse(String(init.body))
+          : undefined;
     const [status, json] = await handler(body, (init?.headers ?? {}) as Record<string, string>);
     return new Response(json === undefined ? null : JSON.stringify(json), {
       status,
@@ -31,6 +36,19 @@ export function mockApi(routes: Record<string, Handler>): jest.SpyInstance {
     });
   });
 }
+
+/** Starts the app already signed in, the way it does after a restart. */
+export const signedIn = {
+  'POST /auth/refresh': (): Reply => [
+    200,
+    { accessToken: 'access-2', refreshToken: 'refresh-2', expiresIn: 900 },
+  ],
+  'GET /users/me': (): Reply => [200, authResponse.user],
+};
+
+export const emptyBrowse = {
+  'GET /posts': (): Reply => [200, { items: [], nextCursor: null }],
+};
 
 export function requestsTo(fetchMock: jest.SpyInstance, method: string, path: string) {
   return fetchMock.mock.calls.filter(

@@ -4,5 +4,5 @@ import { useSession } from '@/session/session-provider';
 
 export default function Index() {
   const { status } = useSession();
-  return <Redirect href={status === 'signedIn' ? '/home' : '/sign-in'} />;
+  return <Redirect href={status === 'signedIn' ? '/browse' : '/sign-in'} />;
 }

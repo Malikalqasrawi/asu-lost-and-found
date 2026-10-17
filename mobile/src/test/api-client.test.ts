@@ -72,7 +72,7 @@ describe('apiRequest', () => {
   });
 
   it('sends the access token only on requests that need it', async () => {
-    await saveTokens({ accessToken: 'access-1', refreshToken: 'refresh-1' });
+    await saveTokens({ accessToken: 'access-1', refreshToken: 'refresh-1', expiresIn: 900 });
     fetchMock = mockApi({
       'GET /users/me': () => [200, {}],
       'GET /health': () => [200, {}],
@@ -86,13 +86,13 @@ describe('apiRequest', () => {
   });
 
   it('refreshes an expired access token and repeats the request', async () => {
-    await saveTokens({ accessToken: 'old-access', refreshToken: 'refresh-1' });
+    await saveTokens({ accessToken: 'old-access', refreshToken: 'refresh-1', expiresIn: 900 });
     fetchMock = mockApi({
       'GET /users/me': (_body, headers) =>
         headers.Authorization === 'Bearer new-access' ? [200, { id: 'user-1' }] : [401],
       'POST /auth/refresh': (body) =>
         body.refreshToken === 'refresh-1'
-          ? [200, { accessToken: 'new-access', refreshToken: 'refresh-2' }]
+          ? [200, { accessToken: 'new-access', refreshToken: 'refresh-2', expiresIn: 900 }]
           : [401],
     });
 
@@ -101,12 +101,28 @@ describe('apiRequest', () => {
     expect(await SecureStore.getItemAsync('refreshToken')).toBe('refresh-2');
   });
 
-  it('refreshes only once when several requests fail together', async () => {
-    await saveTokens({ accessToken: 'old-access', refreshToken: 'refresh-1' });
+  it('refreshes a token that is about to run out before sending the request', async () => {
+    await saveTokens({ accessToken: 'old-access', refreshToken: 'refresh-1', expiresIn: 10 });
     fetchMock = mockApi({
       'GET /users/me': (_body, headers) =>
         headers.Authorization === 'Bearer new-access' ? [200, {}] : [401],
-      'POST /auth/refresh': () => [200, { accessToken: 'new-access', refreshToken: 'refresh-2' }],
+      'POST /auth/refresh': () => [
+        200,
+        { accessToken: 'new-access', refreshToken: 'refresh-2', expiresIn: 900 },
+      ],
+    });
+
+    await apiRequest('GET', '/users/me', { auth: true });
+
+    expect(requestsTo(fetchMock, 'GET', '/users/me')).toHaveLength(1);
+  });
+
+  it('refreshes only once when several requests fail together', async () => {
+    await saveTokens({ accessToken: 'old-access', refreshToken: 'refresh-1', expiresIn: 900 });
+    fetchMock = mockApi({
+      'GET /users/me': (_body, headers) =>
+        headers.Authorization === 'Bearer new-access' ? [200, {}] : [401],
+      'POST /auth/refresh': () => [200, { accessToken: 'new-access', refreshToken: 'refresh-2', expiresIn: 900 }],
     });
 
     await Promise.all([
@@ -119,7 +135,7 @@ describe('apiRequest', () => {
   });
 
   it('ends the session when the refresh token is refused', async () => {
-    await saveTokens({ accessToken: 'old-access', refreshToken: 'refresh-1' });
+    await saveTokens({ accessToken: 'old-access', refreshToken: 'refresh-1', expiresIn: 900 });
     const expired = jest.fn();
     const stopListening = onSessionExpired(expired);
     fetchMock = mockApi({

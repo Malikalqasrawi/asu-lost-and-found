@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { createHash, randomInt, timingSafeEqual } from 'node:crypto';
 import type { EmailCodePurpose, Prisma } from '../generated/prisma/client.js';
+import { lastDay } from '../common/time.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 
 export const CODE_TTL_MS = 15 * 60_000;
@@ -10,9 +11,6 @@ export const RESEND_COOLDOWN_MS = 60_000;
 // minute would give an attacker 5 fresh guesses each time.
 export const MAX_CODES_PER_DAY = 5;
 export const MAX_GUESSES_PER_DAY = 15;
-const DAY_MS = 24 * 60 * 60_000;
-
-const lastDay = () => ({ gte: new Date(Date.now() - DAY_MS) });
 
 function hashCode(code: string): string {
   return createHash('sha256').update(code).digest('hex');

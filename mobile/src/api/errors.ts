@@ -1,14 +1,11 @@
 import { ApiError } from '@/api/client';
 
+/** The server words its own messages; only crashes and dropped connections get ours. */
 export function errorMessage(error: unknown): string {
   if (error instanceof ApiError) {
-    if (error.status === 429) {
-      return 'Too many attempts. Wait a few minutes and try again.';
-    }
-    if (error.status >= 500) {
-      return 'Something went wrong on our side. Try again in a moment.';
-    }
-    return error.message;
+    return error.status >= 500
+      ? 'Something went wrong on our side. Try again in a moment.'
+      : error.message;
   }
   return "Can't reach the server. Check your connection and try again.";
 }

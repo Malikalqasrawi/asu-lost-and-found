@@ -4,6 +4,7 @@ dist/
 coverage/
 *.tsbuildinfo
 backend/src/generated/
+backend/uploads/
 
 # Local config and secrets
 .env

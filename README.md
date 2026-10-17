@@ -2,7 +2,7 @@
 
 A mobile app that helps students at Applied Science Private University get lost items back. Students post what they lost or found on campus, the app suggests matches between the two, and the real owner proves an item is theirs before it is handed over.
 
-> Work in progress. Accounts are done; the lost and found features are being built in stages.
+> Work in progress. Accounts and posts with photos are done; claims, handover and matching are being built in stages.
 
 ## How it works
 
@@ -15,7 +15,7 @@ A mobile app that helps students at Applied Science Private University get lost 
 
 - [x] Project setup: API, database, mobile app, Docker, CI
 - [x] Accounts with university email only, email verification, roles (student, security office, admin)
-- [ ] Lost and found posts with photos (blurred publicly, EXIF removed) and campus locations
+- [x] Lost and found posts with photos (blurred publicly, EXIF removed) and campus locations
 - [ ] Ownership claims with private questions, limited attempts and claim history
 - [ ] Handover: in-app messages, pickup code, security office desk
 - [ ] Match suggestions between lost and found posts
@@ -43,14 +43,18 @@ asu-lost-and-found/
 │   │   ├── config/          environment validation
 │   │   ├── health/          GET /api/health
 │   │   ├── mail/            email outbox and SMTP sender
+│   │   ├── photos/          resizing, blurring and serving photos
+│   │   ├── places/          campus places
+│   │   ├── posts/           lost and found posts, search
 │   │   ├── prisma/          database client
 │   │   ├── rate-limit/      request limits
+│   │   ├── storage/         file storage (a Docker volume, swappable)
 │   │   └── users/           profiles and roles
 │   └── test/                integration tests on a real PostgreSQL
 ├── mobile/                  Expo app
 │   └── src/
 │       ├── api/             API client with automatic token refresh
-│       ├── app/             screens (Expo Router): (auth) and (app) groups
+│       ├── app/             screens (Expo Router): sign-in screens, then Browse, My posts and Account tabs
 │       ├── components/      form fields, buttons, screen layout
 │       ├── session/         signed-in state and token storage
 │       └── test/
@@ -122,6 +126,15 @@ All routes start with `/api`. Everything except the ones marked public needs `Au
 | `POST /auth/forgot-password` | yes | Emails a password reset code |
 | `POST /auth/reset-password` | yes | Sets a new password with the code and signs out every device |
 | `GET /users/me` | no | The signed-in user's profile |
+| `GET /places` | no | Campus places to choose from |
+| `GET /posts` | no | Open posts, newest first; filters `type`, `category`, `placeId`, search `q`, paging with `cursor` and `limit` |
+| `GET /posts/mine` | no | The signed-in student's posts, closed ones included |
+| `GET /posts/:id` | no | One post (a closed post only for its author) |
+| `POST /posts` | no | Create a post: form fields plus up to 4 photos (`multipart/form-data`) |
+| `PATCH /posts/:id` | no | Edit your own open post |
+| `POST /posts/:id/close` | no | Close your own post |
+| `GET /photos/:id` | no | The photo other students see (blurred for found items) |
+| `GET /photos/:id/original` | no | The unblurred photo, only for the student who posted it |
 | `GET /health` | yes | API and database status |
 
 ## Tests
@@ -143,8 +156,12 @@ GitHub Actions runs all of them on every pull request, plus a gitleaks secret sc
 - Passwords hashed with bcrypt (cost 12). Sign-in gives the same answer for a wrong password and an unknown email, and takes the same time. Sign-up, resending a code and password reset give the same answer whether or not an email has an account. Emails never include text typed into the sign-up form, and names may only contain letters, spaces, apostrophes, dots and hyphens.
 - Short-lived access tokens (JWT, HS256) and refresh tokens that work once: each refresh replaces the token, and reusing an old one ends that whole sign-in. Refresh tokens are stored hashed. Changing the password signs out every device and ends access tokens issued before it. In the app the refresh token lives in the device's secure storage.
 - Every route needs a signed-in user unless it is marked public, and the user is checked against the database on every request. Roles are checked by a guard; extra fields such as `role` in a sign-up request are refused.
-- Rate limits per network address: 10 requests an hour that send an email, and 10 password or code attempts every 15 minutes (both set in `.env`).
+- Rate limits: 10 requests an hour that send an email and 10 password or code attempts every 15 minutes per network address, and 5 posts with photos a minute per student (all set in `.env`). Once signed in, requests are counted per student, so students sharing the campus Wi-Fi don't use up each other's limit.
 - Emails go through an outbox table in the same transaction as the change that triggers them, and are retried with backoff if the mail server is down.
+- Photos: every upload is decoded and saved again as a new JPEG, so only real JPEG, PNG or WebP images are accepted and all EXIF data (GPS position, phone model) is removed. At most 4 photos of 8 MB each per post, and 10 posts a day per student, also when many arrive at the same moment.
+- Uploads can't overload the server: each photo's header is checked before it is decoded (at most 25 megapixels, no 16-bit or animated images), photos are processed one at a time with at most two jobs running across the whole server, and the backend container has a memory limit. The app shrinks photos on the phone before uploading them.
+- Found items are shown blurred to everyone except the student who posted them, so only the real owner can describe the details. Originals are only ever sent to the poster. Photos are fetched by id through the API after the sign-in check; file names on disk are random and never leave the server.
+- A post that is closed disappears for everyone but its author, photos included. Editing or closing someone else's post answers 404, as if it didn't exist.
 - Emails to a real mail server must use TLS; only the local Mailpit inbox is allowed plain SMTP.
 - Configuration comes from environment variables and is validated at startup. Secrets live only in git-ignored `.env` files; the repository has `.env.example` copies.
 - Security headers through Helmet, request bodies validated and stripped of unknown fields.

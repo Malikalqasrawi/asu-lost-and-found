@@ -8,9 +8,8 @@ import {
   MaxLength,
   MinLength,
 } from 'class-validator';
+import { trim } from '../../common/transforms.js';
 
-const trim = ({ value }: { value: unknown }) =>
-  typeof value === 'string' ? value.trim() : value;
 const normalizeEmail = ({ value }: { value: unknown }) =>
   typeof value === 'string' ? value.trim().toLowerCase() : value;
 

@@ -41,9 +41,13 @@ services:
   backend:
     build: ./backend
     restart: unless-stopped
+    # A last line of defence: if photo processing ever runs away, Docker restarts
+    # the backend instead of the whole machine running out of memory.
+    mem_limit: 768m
     environment:
       DATABASE_URL: postgresql://lostfound_app:${DB_APP_PASSWORD}@db:5432/lostfound
       PORT: 3000
+      UPLOAD_DIR: /app/uploads
       JWT_SECRET: ${JWT_SECRET:?Copy .env.example to .env and set JWT_SECRET}
       ALLOWED_EMAIL_DOMAINS: ${ALLOWED_EMAIL_DOMAINS:-asu.edu.jo}
       MAIL_HOST: ${MAIL_HOST:-mailpit}
@@ -54,6 +58,9 @@ services:
       MAIL_FROM: "${MAIL_FROM:-ASU Lost & Found <no-reply@asu-lost-found.local>}"
       RATE_LIMIT_EMAILS_PER_HOUR: ${RATE_LIMIT_EMAILS_PER_HOUR:-10}
       RATE_LIMIT_LOGINS_PER_15_MIN: ${RATE_LIMIT_LOGINS_PER_15_MIN:-10}
+      RATE_LIMIT_UPLOADS_PER_MINUTE: ${RATE_LIMIT_UPLOADS_PER_MINUTE:-5}
+    volumes:
+      - uploads:/app/uploads
     ports:
       - "${APP_BIND:-127.0.0.1}:4000:3000"
     depends_on:
@@ -64,3 +71,4 @@ services:
 
 volumes:
   db-data:
+  uploads:
