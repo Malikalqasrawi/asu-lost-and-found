@@ -4,6 +4,8 @@ import { JwtModule } from '@nestjs/jwt';
 import { EnvironmentVariables } from '../config/env.validation.js';
 import { MailModule } from '../mail/mail.module.js';
 import { UsersModule } from '../users/users.module.js';
+import { AdminAuthController } from './admin-auth.controller.js';
+import { AdminAuthService } from './admin-auth.service.js';
 import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
 import { EmailCodesService } from './email-codes.service.js';
@@ -28,8 +30,8 @@ const ISSUER = 'asu-lost-and-found';
       }),
     }),
   ],
-  controllers: [AuthController],
-  providers: [AuthService, EmailCodesService, TokensService],
+  controllers: [AuthController, AdminAuthController],
+  providers: [AuthService, AdminAuthService, EmailCodesService, TokensService],
   exports: [TokensService],
 })
 export class AuthModule {}

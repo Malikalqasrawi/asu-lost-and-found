@@ -71,6 +71,28 @@ jobs:
       - run: npm run typecheck
       - run: npm test
 
+  admin:
+    name: Admin website lint, type check, tests and build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: admin
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09   # v5
+
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444   # v5
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: admin/package-lock.json
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run lint:layers
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
   docker:
     name: Docker build and smoke test
     runs-on: ubuntu-latest
@@ -104,6 +126,9 @@ jobs:
           echo "The API didn't start."
           docker compose logs
           exit 1
+
+      - name: Check the admin website answers with its security headers
+        run: curl -fsS -D - -o /dev/null http://localhost:4001/ | grep -i "content-security-policy: default-src"
 
       - name: Stop and delete everything
         if: always()

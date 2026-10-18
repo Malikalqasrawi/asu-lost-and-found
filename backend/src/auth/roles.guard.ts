@@ -29,6 +29,14 @@ export class RolesGuard implements CanActivate {
     if (!user || !roles.includes(user.role)) {
       throw new ForbiddenException();
     }
+    // Admin powers need the admin website's sign-in with the emailed code,
+    // not just an admin's password typed into the app.
+    if (user.role === 'ADMIN' && !user.adminSession) {
+      throw new ForbiddenException({
+        message: 'Sign in on the admin website to do this.',
+        code: 'ADMIN_SESSION_REQUIRED',
+      });
+    }
     return true;
   }
 }

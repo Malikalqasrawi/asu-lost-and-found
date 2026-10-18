@@ -48,7 +48,7 @@ async function candidates(
         (f.happened_on - l.happened_on) AS days_after
       FROM posts l
       JOIN posts f
-        ON f.type = 'FOUND' AND f.status = 'OPEN'
+        ON f.type = 'FOUND' AND f.status = 'OPEN' AND f.hidden_at IS NULL
         AND f.category = l.category
         AND f.author_id <> l.author_id
         AND f.happened_on BETWEEN l.happened_on - 1
@@ -56,7 +56,8 @@ async function candidates(
         AND l.happened_on BETWEEN f.happened_on - ${MAX_DAYS_AFTER}::int
           AND f.happened_on + 1
       JOIN users u ON u.id = l.author_id
-      WHERE l.type = 'LOST' AND l.status = 'OPEN' AND ${side}
+      WHERE l.type = 'LOST' AND l.status = 'OPEN' AND l.hidden_at IS NULL
+        AND ${side}
         AND NOT EXISTS (
           SELECT 1 FROM match_dismissals d
           WHERE d.lost_post_id = l.id AND d.found_post_id = f.id

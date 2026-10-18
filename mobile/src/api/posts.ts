@@ -44,6 +44,8 @@ export interface Post {
   canSeeOriginals: boolean;
   photoIds: string[];
   desk: DeskStatus | null;
+  /** A moderator or a ban hid it; only its author still sees it. */
+  hidden: boolean;
 }
 
 export interface PostPage {

@@ -13,9 +13,28 @@ import { FakeMailSender } from './fake-mail-sender.js';
 export interface TestContext {
   app: INestApplication<App>;
   mailer: FakeMailSender;
-  outbox: OutboxService;
+  /** Sends every queued email that is due, not just one batch. */
+  outbox: Pick<OutboxService, 'processDue'>;
   prisma: PrismaService;
   http: () => ReturnType<typeof request>;
+}
+
+// The test files share one database, so the queue can hold more than the
+// outbox sends in one go; tests want everything sent before they look.
+function allDue(outbox: OutboxService): Pick<OutboxService, 'processDue'> {
+  return {
+    async processDue() {
+      let sent = 0;
+      for (
+        let batch = await outbox.processDue();
+        batch > 0;
+        batch = await outbox.processDue()
+      ) {
+        sent += batch;
+      }
+      return sent;
+    },
+  };
 }
 
 export async function createTestApp(): Promise<TestContext> {
@@ -35,7 +54,7 @@ export async function createTestApp(): Promise<TestContext> {
   return {
     app,
     mailer,
-    outbox: app.get(OutboxService),
+    outbox: allDue(app.get(OutboxService)),
     prisma: app.get(PrismaService),
     http: () => request(app.getHttpServer()),
   };

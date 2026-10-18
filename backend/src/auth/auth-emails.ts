@@ -32,3 +32,17 @@ export function passwordResetEmail(to: string, code: string): MailMessage {
     ].join('\n'),
   };
 }
+
+export function adminSignInEmail(to: string, code: string): MailMessage {
+  return {
+    to,
+    subject: 'Your ASU Lost & Found admin sign-in code',
+    text: [
+      'Hi,',
+      '',
+      `Your code for the ASU Lost & Found admin website is ${code}. It works for 15 minutes.`,
+      '',
+      'Never share this code. If you did not just sign in, change your password: someone else knows it.',
+    ].join('\n'),
+  };
+}

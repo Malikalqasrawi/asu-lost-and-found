@@ -1,0 +1,222 @@
+:root {
+  color-scheme: light dark;
+  --text: #11181c;
+  --text-secondary: #60646c;
+  --background: #ffffff;
+  --element: #f0f0f3;
+  --selected: #e0e1e6;
+  --border: #d9dbe0;
+  --tint: #1f6feb;
+  --on-tint: #ffffff;
+  --success: #1a7f37;
+  --danger: #cf222e;
+  --radius: 12px;
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
+  line-height: 1.5;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --text: #ecedee;
+    --text-secondary: #b0b4ba;
+    --background: #0b0d10;
+    --element: #1a1d21;
+    --selected: #2e3135;
+    --border: #2e3135;
+    --tint: #4c9aff;
+    --on-tint: #0b0d10;
+    --success: #3fb950;
+    --danger: #f85149;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--text);
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  line-height: 1.2;
+}
+
+a {
+  color: var(--tint);
+}
+
+.shell {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 24px;
+  display: grid;
+  gap: 24px;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.topbar nav {
+  display: flex;
+  gap: 8px;
+  flex: 1;
+}
+
+.topbar nav a {
+  padding: 6px 14px;
+  border-radius: 999px;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.topbar nav a.active {
+  background: var(--tint);
+  color: var(--on-tint);
+}
+
+.muted {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.card {
+  background: var(--element);
+  border-radius: 16px;
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.stack {
+  display: grid;
+  gap: 16px;
+}
+
+.badge {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 10px;
+  font-size: 0.8rem;
+}
+
+.badge.danger {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+button {
+  font: inherit;
+  border: none;
+  border-radius: var(--radius);
+  padding: 8px 16px;
+  cursor: pointer;
+  background: var(--selected);
+  color: var(--text);
+}
+
+button.primary {
+  background: var(--tint);
+  color: var(--on-tint);
+}
+
+button.danger {
+  background: var(--danger);
+  color: #ffffff;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+label {
+  display: grid;
+  gap: 4px;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+input,
+textarea,
+select {
+  font: inherit;
+  color: var(--text);
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px 12px;
+}
+
+.message {
+  border: 1px solid var(--danger);
+  color: var(--danger);
+  border-radius: var(--radius);
+  padding: 8px 12px;
+}
+
+.message.info {
+  border-color: var(--success);
+  color: var(--success);
+}
+
+.photos {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.photos img {
+  width: 160px;
+  height: 120px;
+  object-fit: cover;
+  border-radius: var(--radius);
+  background: var(--selected);
+}
+
+.quote {
+  border-left: 3px solid var(--border);
+  padding-left: 12px;
+  white-space: pre-wrap;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.sign-in {
+  max-width: 380px;
+  margin: 10vh auto 0;
+  padding: 24px;
+  display: grid;
+  gap: 16px;
+}

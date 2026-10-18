@@ -2,7 +2,7 @@
 
 A mobile app that helps students at Applied Science Private University get lost items back. Students post what they lost or found on campus, the app suggests matches between the two, and the real owner proves an item is theirs before it is handed over.
 
-> Work in progress. Accounts, posts with photos, ownership claims, the handover and match suggestions are done; moderation and polish are next.
+> Work in progress. Accounts, posts with photos, ownership claims, the handover, match suggestions and moderation are done; final polish is next.
 
 ## How it works
 
@@ -19,13 +19,14 @@ A mobile app that helps students at Applied Science Private University get lost 
 - [x] Ownership claims with private questions, limited attempts and claim history
 - [x] Handover: in-app messages, pickup code, security office desk
 - [x] Match suggestions between lost and found posts
-- [ ] Moderation: reports, hidden posts, banned accounts
+- [x] Moderation: reports, hidden posts, banned accounts, and an admin website
 
 ## Tech stack
 
 | Part | Tools |
 | --- | --- |
 | Mobile app | React Native, Expo SDK 58, TypeScript, Expo Router, TanStack Query |
+| Admin website | React 19, Vite, TypeScript, React Router, TanStack Query, served by nginx |
 | API | Node.js 24, NestJS 12, TypeScript, Prisma 7 |
 | Database | PostgreSQL 17 |
 | Tests | Vitest, Supertest, Testcontainers (backend); Jest, React Native Testing Library (app) |
@@ -42,6 +43,7 @@ asu-lost-and-found/
 │   │   ├── claims/          ownership claims, answers, claim history
 │   │   ├── handovers/       messages, pickup codes, the security office desk
 │   │   ├── matches/         suggestions between lost and found posts
+│   │   ├── moderation/      reports, hidden posts and messages, bans
 │   │   ├── cli/             set-role command
 │   │   ├── config/          environment validation
 │   │   ├── health/          GET /api/health
@@ -54,6 +56,7 @@ asu-lost-and-found/
 │   │   ├── storage/         file storage (a Docker volume, swappable)
 │   │   └── users/           profiles and roles
 │   └── test/                integration tests on a real PostgreSQL
+├── admin/                   admin website (React): reports, students, claim history, activity
 ├── mobile/                  Expo app
 │   └── src/
 │       ├── api/             API client with automatic token refresh
@@ -93,6 +96,17 @@ docker compose exec backend node dist/cli/set-role.js you@asu.edu.jo ADMIN
 ```
 
 A `SECURITY` account sees a Desk tab in the app, for the university security office.
+
+### The admin website
+
+`docker compose up` also serves the admin website at http://localhost:4001. Sign in with an `ADMIN` account: first the password, then the 6-digit code that arrives in Mailpit. To work on the website itself:
+
+```bash
+cd admin
+cp .env.example .env
+npm install
+npm run dev
+```
 
 ### 2. Mobile app
 
@@ -159,6 +173,17 @@ All routes start with `/api`. Everything except the ones marked public needs `Au
 | `POST /desk/items/:id/receive` | no | Security staff only: the desk has the item |
 | `GET /posts/:id/matches` | no | For the author of a lost post: found items that may be theirs, with the reasons |
 | `POST /posts/:id/matches/:foundId/dismiss` | no | Hide a suggested found item ("Not mine") |
+| `POST /posts/:id/reports` / `POST /messages/:id/reports` | no | Report a post, or a message sent to you, with a reason |
+| `POST /admin/auth/login` | yes | Admin website, step 1: password; emails a 6-digit code |
+| `POST /admin/auth/verify` | yes | Step 2: the code; returns an access token and sets the refresh cookie |
+| `POST /admin/auth/refresh` / `POST /admin/auth/logout` | yes | Uses the httpOnly cookie; only from the admin website |
+| `GET /admin/reports?status=` | no | Admin: reports grouped by post or message |
+| `POST /admin/posts/:id/hide` / `restore` | no | Admin: hide a post from everyone but its author, or show it again |
+| `POST /admin/messages/:id/remove` | no | Admin: remove a message from a chat |
+| `POST /admin/posts/:id/reports/dismiss` / `POST /admin/messages/:id/reports/dismiss` | no | Admin: close reports without a change |
+| `GET /admin/users?q=` | no | Admin: find students by name or email |
+| `POST /admin/users/:id/ban` / `unban` | no | Admin: ban (with a reason, for some days or for good) or lift a ban |
+| `GET /admin/log` | no | Admin: every moderation decision and the admin who made it |
 | `GET /health` | yes | API and database status |
 
 ## Tests
@@ -167,8 +192,9 @@ All routes start with `/api`. Everything except the ones marked public needs `Au
 | --- | --- | --- |
 | `npm test` | `backend/` | Unit tests |
 | `npm run test:e2e` | `backend/` | API tests against PostgreSQL 17 in Docker (Testcontainers) |
-| `npm run lint` / `npm run typecheck` | `backend/`, `mobile/` | oxlint or ESLint, TypeScript |
-| `npm test` | `mobile/` | Sign-in, posting, claim, handover and matching flows on the real screens, API client and token refresh |
+| `npm run lint` / `npm run typecheck` | `backend/`, `mobile/`, `admin/` | oxlint or ESLint, TypeScript |
+| `npm test` | `mobile/` | Sign-in, posting, claim, handover, matching and reporting flows on the real screens, API client and token refresh |
+| `npm test` | `admin/` | Admin website: sign-in in two steps, the report queue, bans and the claim history |
 
 GitHub Actions runs all of them on every pull request, plus a gitleaks secret scan and a Docker build that starts the whole stack and calls the health endpoint.
 
@@ -190,6 +216,11 @@ GitHub Actions runs all of them on every pull request, plus a gitleaks secret sc
 - Serial numbers and IMEIs are never stored as typed: the server keeps an HMAC-SHA256 fingerprint made with a secret key from `.env` (`SERIAL_HASH_KEY`), so a copy of the database alone can't be used to work them out. It compares that with the claimer's number, and only the finder learns whether it matched.
 - Handover: only the finder and the student whose claim was accepted can read the chat or the handover; anyone else gets 404. The pickup code is shown only to the owner, and only the person holding the item can type it: the finder, or security staff once the item is at the desk (never for their own item). 5 wrong codes lock it until the owner asks for a new one, even when guesses arrive at the same moment, and code attempts count toward the password and code rate limit. Message emails never include the text and go out at most once an hour per chat, only to someone who hasn't had it open for 5 minutes and has opened it since the last email.
 - The security office sees the finder's name and email, the owner's full name once it has the item (to check the student ID at pickup), and the original photos of items it is handling. Only accounts with the security role can open the desk.
+- Admin website: the password and then a code sent by email. Admin endpoints only accept tokens from that sign-in, so an admin's password alone, typed into the app, can't moderate. The refresh token lives in an httpOnly, SameSite=Strict cookie scoped to the sign-in endpoints, and refreshing also needs the admin site's origin and a custom header. CORS allows the admin website only. The cookie lasts until the browser closes, and an admin session ends 12 hours after sign-in however often it refreshes, or as soon as the account stops being an admin.
+- The admin website is served by nginx running as a non-root user, with a Content-Security-Policy that allows scripts only from the site itself and network calls only to the API.
+- Reports: a student can report a post they can see, or a message sent to them, once each, and 20 reports an hour. Admins see only the reported message, never the rest of the chat.
+- A ban signs the student out everywhere, blocks sign-in until its end date (or for good), hides their open posts and closes their waiting claims. The student gets an email with the reason. Admin accounts can't be banned.
+- Hiding a post closes its waiting claims, and a moderator's hiding stays after a ban on the author ends. Every moderation decision is written to a log, with the admin who made it, in the same transaction as the decision.
 - Match suggestions are shown only to the author of the lost post, with the same blurred photos as Browse. The match email names only the student's own lost item. It goes out only when the titles themselves are alike, to at most 3 students per found item, and nobody gets more than one a day.
 - A student or an item that has claims can't be deleted, so the claim history and the 3-claims limit can't be reset. Closing a found item closes its waiting claims and emails those claimants.
 - Emails to a real mail server must use TLS; only the local Mailpit inbox is allowed plain SMTP.
@@ -205,6 +236,8 @@ GitHub Actions runs all of them on every pull request, plus a gitleaks secret sc
 - Response times of the password reset and resend-code endpoints differ by a few milliseconds between existing and unknown emails.
 - Messages arrive by asking the server every few seconds while a chat is open, not instantly, and there are no push notifications; emails stand in for them.
 - Matching compares spelling, not meaning: "purse" and "wallet" don't count as similar titles, although the category, place and date still bring such items up.
+- The admin website's second step is a code sent to the admin's email, the same inbox that can reset the password, so someone who controls that inbox has both steps. An authenticator app for admins would close this.
+- A timed ban ends at the student's next sign-in after its end date; until then their posts stay hidden.
 - An item left at the security office that nobody claims stays listed at the desk; there is no step yet to give it back to the finder or dispose of it.
 
 ## Author

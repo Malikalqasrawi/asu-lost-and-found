@@ -3,9 +3,12 @@ import { Reflector } from '@nestjs/core';
 import type { Role } from '../generated/prisma/client.js';
 import { RolesGuard } from './roles.guard.js';
 
-function contextFor(role: Role | undefined): ExecutionContext {
+function contextFor(
+  role: Role | undefined,
+  adminSession = false,
+): ExecutionContext {
   const user = role
-    ? { id: 'u1', email: 'a@asu.edu.jo', fullName: 'A', role }
+    ? { id: 'u1', email: 'a@asu.edu.jo', fullName: 'A', role, adminSession }
     : undefined;
   return {
     getHandler: () => () => undefined,
@@ -36,6 +39,15 @@ describe('RolesGuard', () => {
     expect(() =>
       guardRequiring(['ADMIN']).canActivate(contextFor('STUDENT')),
     ).toThrow(ForbiddenException);
+  });
+
+  it('lets an admin through only with an admin website session', () => {
+    expect(() =>
+      guardRequiring(['ADMIN']).canActivate(contextFor('ADMIN')),
+    ).toThrow(ForbiddenException);
+    expect(
+      guardRequiring(['ADMIN']).canActivate(contextFor('ADMIN', true)),
+    ).toBe(true);
   });
 
   it('answers 403 when nobody is signed in', () => {

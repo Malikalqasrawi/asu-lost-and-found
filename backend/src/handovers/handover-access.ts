@@ -91,6 +91,7 @@ export interface ChatMessage {
   id: string;
   senderId: string;
   text: string;
+  removedAt: Date | null;
   createdAt: Date;
 }
 
@@ -104,6 +105,7 @@ interface PreviewRow {
   id: string | null;
   sender_id: string | null;
   text: string | null;
+  removed_at: Date | null;
   created_at: Date | null;
   unread: number;
 }
@@ -118,7 +120,8 @@ export async function chatPreviews(
     return new Map();
   }
   const rows = await db.$queryRaw<PreviewRow[]>`
-    SELECT h.claim_id AS handover_id, m.id, m.sender_id, m.text, m.created_at,
+    SELECT h.claim_id AS handover_id, m.id, m.sender_id, m.text, m.removed_at,
+      m.created_at,
       (SELECT count(*)::int FROM messages u
         WHERE u.handover_id = h.claim_id
           AND u.sender_id <> ${viewerId}::uuid
@@ -126,7 +129,7 @@ export async function chatPreviews(
             THEN h.finder_read_at ELSE h.owner_read_at END) AS unread
     FROM handovers h
     LEFT JOIN LATERAL (
-      SELECT id, sender_id, text, created_at FROM messages
+      SELECT id, sender_id, text, removed_at, created_at FROM messages
       WHERE handover_id = h.claim_id
       ORDER BY created_at DESC, id DESC
       LIMIT 1
@@ -143,6 +146,7 @@ export async function chatPreviews(
                 id: row.id,
                 senderId: row.sender_id,
                 text: row.text,
+                removedAt: row.removed_at,
                 createdAt: row.created_at,
               }
             : null,
