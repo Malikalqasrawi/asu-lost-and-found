@@ -7,7 +7,10 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '../generated/prisma/client.js';
 import { OutboxService } from '../mail/outbox.service.js';
+import { lockPost } from '../prisma/locks.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { startHandover } from '../handovers/handover-access.js';
+import { atDeskEmail } from '../handovers/handover-emails.js';
 import type { MailMessage } from '../mail/mail-sender.js';
 import {
   claimAcceptedEmail,
@@ -65,11 +68,6 @@ function checkAnswers(questionIds: string[], answers: AnswerDto[]): void {
   if (!everyQuestionOnce) {
     throw new BadRequestException('Answer every question once.');
   }
-}
-
-/** Changes to one item's claims wait for each other, so a new claim and a decision can't cross. */
-function lockPost(tx: Prisma.TransactionClient, postId: string) {
-  return tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${postId}))`;
 }
 
 @Injectable()
@@ -246,10 +244,8 @@ export class ClaimsService {
           throw alreadyDecided();
         }
 
-        await this.outbox.enqueue(
-          tx,
-          claimAcceptedEmail(claim.claimant.email, claim.post.title),
-        );
+        await startHandover(tx, claim, finderId);
+        await this.emailAccepted(tx, claim);
         await this.closeWaiting(
           tx,
           claim.postId,
@@ -311,6 +307,25 @@ export class ClaimsService {
       take: 100,
     });
     return claims.map(toMyClaimView);
+  }
+
+  /** An item that is already at the security office is picked up there. */
+  private async emailAccepted(
+    tx: Prisma.TransactionClient,
+    claim: {
+      postId: string;
+      claimant: { email: string };
+      post: { title: string };
+    },
+  ): Promise<void> {
+    const { email } = claim.claimant;
+    await this.outbox.enqueue(tx, claimAcceptedEmail(email, claim.post.title));
+    const desk = await tx.deskItem.findUnique({
+      where: { postId: claim.postId },
+    });
+    if (desk?.status === 'AT_DESK') {
+      await this.outbox.enqueue(tx, atDeskEmail(email, claim.post.title));
+    }
   }
 
   /** Closing an item closes its waiting claims and tells those claimants. */

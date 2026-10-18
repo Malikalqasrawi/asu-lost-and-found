@@ -37,6 +37,7 @@ function post(overrides: Partial<Post> = {}): Post {
     isMine: false,
     canSeeOriginals: false,
     photoIds: [],
+    desk: null,
     ...overrides,
   };
 }

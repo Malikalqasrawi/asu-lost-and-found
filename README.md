@@ -2,7 +2,7 @@
 
 A mobile app that helps students at Applied Science Private University get lost items back. Students post what they lost or found on campus, the app suggests matches between the two, and the real owner proves an item is theirs before it is handed over.
 
-> Work in progress. Accounts, posts with photos and ownership claims are done; handover and matching are being built in stages.
+> Work in progress. Accounts, posts with photos, ownership claims and the handover are done; matching and moderation are being built in stages.
 
 ## How it works
 
@@ -17,7 +17,7 @@ A mobile app that helps students at Applied Science Private University get lost 
 - [x] Accounts with university email only, email verification, roles (student, security office, admin)
 - [x] Lost and found posts with photos (blurred publicly, EXIF removed) and campus locations
 - [x] Ownership claims with private questions, limited attempts and claim history
-- [ ] Handover: in-app messages, pickup code, security office desk
+- [x] Handover: in-app messages, pickup code, security office desk
 - [ ] Match suggestions between lost and found posts
 - [ ] Moderation: reports, hidden posts, banned accounts
 
@@ -40,6 +40,7 @@ asu-lost-and-found/
 │   ├── src/
 │   │   ├── auth/            sign-up, email codes, sign-in, tokens, guards
 │   │   ├── claims/          ownership claims, answers, claim history
+│   │   ├── handovers/       messages, pickup codes, the security office desk
 │   │   ├── cli/             set-role command
 │   │   ├── config/          environment validation
 │   │   ├── health/          GET /api/health
@@ -55,7 +56,7 @@ asu-lost-and-found/
 ├── mobile/                  Expo app
 │   └── src/
 │       ├── api/             API client with automatic token refresh
-│       ├── app/             screens (Expo Router): sign-in screens, then Browse, My posts, My claims and Account tabs
+│       ├── app/             screens (Expo Router): sign-in screens, then Browse, My posts, My claims, Messages and Account tabs (and Desk for security staff)
 │       ├── components/      form fields, buttons, screen layout
 │       ├── session/         signed-in state and token storage
 │       └── test/
@@ -89,6 +90,8 @@ Everyone signs up as a student. To give an account another role (`STUDENT`, `SEC
 ```bash
 docker compose exec backend node dist/cli/set-role.js you@asu.edu.jo ADMIN
 ```
+
+A `SECURITY` account sees a Desk tab in the app, for the university security office.
 
 ### 2. Mobile app
 
@@ -144,6 +147,15 @@ All routes start with `/api`. Everything except the ones marked public needs `Au
 | `POST /claims/:id/withdraw` | no | Take back your own claim while it is waiting |
 | `GET /claims/mine` | no | The signed-in student's claims |
 | `GET /admin/claimants` | no | Admin only: students with their rejected and total claims |
+| `GET /handovers/mine` | no | The signed-in student's handovers with the last message and unread count |
+| `GET /posts/:id/handover` | no | For the finder and the owner: the handover; the owner also sees the pickup code |
+| `GET /posts/:id/messages` | no | The finder's and the owner's messages, oldest first; marks them read |
+| `POST /posts/:id/messages` | no | Send a message (until the item is handed over) |
+| `POST /posts/:id/handover/return` | no | The finder, or the security office for items it holds, types the owner's code; the item becomes returned |
+| `POST /posts/:id/handover/new-code` | no | The owner replaces a code that was locked after 5 wrong tries |
+| `POST /posts/:id/desk` / `DELETE /posts/:id/desk` | no | The finder takes a found item to the security office, or changes their mind before it arrives |
+| `GET /desk/items?status=` | no | Security staff only: items on the way to the desk, or at the desk |
+| `POST /desk/items/:id/receive` | no | Security staff only: the desk has the item |
 | `GET /health` | yes | API and database status |
 
 ## Tests
@@ -153,7 +165,7 @@ All routes start with `/api`. Everything except the ones marked public needs `Au
 | `npm test` | `backend/` | Unit tests |
 | `npm run test:e2e` | `backend/` | API tests against PostgreSQL 17 in Docker (Testcontainers) |
 | `npm run lint` / `npm run typecheck` | `backend/`, `mobile/` | oxlint or ESLint, TypeScript |
-| `npm test` | `mobile/` | Sign-in, posting and claim flows on the real screens, API client and token refresh |
+| `npm test` | `mobile/` | Sign-in, posting, claim and handover flows on the real screens, API client and token refresh |
 
 GitHub Actions runs all of them on every pull request, plus a gitleaks secret scan and a Docker build that starts the whole stack and calls the health endpoint.
 
@@ -173,6 +185,8 @@ GitHub Actions runs all of them on every pull request, plus a gitleaks secret sc
 - A post that is closed disappears for everyone but its author, photos included. Editing or closing someone else's post answers 404, as if it didn't exist.
 - Claims: claimers answer the finder's questions without seeing the private notes, and only the finder sees the answers next to the notes. Someone else's claim answers 404. A student gets 3 claims per item, and a withdrawn claim counts like a rejected one, so withdrawing and claiming again can't flood the finder with emails. Withdrawn claims disappear from the finder's list. New claims and decisions on one item wait for each other, and the database allows one waiting claim per student per item and one accepted claim per item, so two accepts at the same moment can't both win. Claim emails never include the answers or the notes.
 - Serial numbers and IMEIs are never stored as typed: the server keeps an HMAC-SHA256 fingerprint made with a secret key from `.env` (`SERIAL_HASH_KEY`), so a copy of the database alone can't be used to work them out. It compares that with the claimer's number, and only the finder learns whether it matched.
+- Handover: only the finder and the student whose claim was accepted can read the chat or the handover; anyone else gets 404. The pickup code is shown only to the owner, and only the person holding the item can type it: the finder, or security staff once the item is at the desk (never for their own item). 5 wrong codes lock it until the owner asks for a new one, even when guesses arrive at the same moment, and code attempts count toward the password and code rate limit. Message emails never include the text and go out at most once an hour per chat, only to someone who hasn't had it open for 5 minutes and has opened it since the last email.
+- The security office sees the finder's name and email, the owner's full name once it has the item (to check the student ID at pickup), and the original photos of items it is handling. Only accounts with the security role can open the desk.
 - A student or an item that has claims can't be deleted, so the claim history and the 3-claims limit can't be reset. Closing a found item closes its waiting claims and emails those claimants.
 - Emails to a real mail server must use TLS; only the local Mailpit inbox is allowed plain SMTP.
 - Configuration comes from environment variables and is validated at startup. Secrets live only in git-ignored `.env` files; the repository has `.env.example` copies.
@@ -185,6 +199,8 @@ GitHub Actions runs all of them on every pull request, plus a gitleaks secret sc
 - Rate limits are kept in memory, so they assume a single API server. Behind a proxy the API would also need to trust its forwarded address, or every request would count as the proxy's.
 - Signing up again with an email that is still waiting for verification replaces the password, so someone who knows a classmate is signing up can make the classmate's code fail until they sign up once more. It can't be used to take the account over, because verifying needs the password together with the emailed code.
 - Response times of the password reset and resend-code endpoints differ by a few milliseconds between existing and unknown emails.
+- Messages arrive by asking the server every few seconds while a chat is open, not instantly, and there are no push notifications; emails stand in for them.
+- An item left at the security office that nobody claims stays listed at the desk; there is no step yet to give it back to the finder or dispose of it.
 
 ## Author
 

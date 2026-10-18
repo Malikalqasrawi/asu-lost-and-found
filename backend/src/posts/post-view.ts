@@ -1,5 +1,6 @@
 import type {
   Category,
+  DeskStatus,
   PostStatus,
   PostType,
   Prisma,
@@ -9,6 +10,7 @@ export const POST_INCLUDE = {
   place: true,
   author: { select: { fullName: true } },
   photos: { orderBy: { position: 'asc' } },
+  deskItem: { select: { status: true } },
 } as const satisfies Prisma.PostInclude;
 
 type PostWithDetails = Prisma.PostGetPayload<{ include: typeof POST_INCLUDE }>;
@@ -29,6 +31,8 @@ export interface PostView {
   /** The poster, or the student whose claim the poster accepted. */
   canSeeOriginals: boolean;
   photoIds: string[];
+  /** Whether the finder took the item to the university security office. */
+  desk: DeskStatus | null;
 }
 
 /** Only the first name of the poster is shown; storage keys never leave the server. */
@@ -53,5 +57,6 @@ export function toPostView(
     isMine,
     canSeeOriginals: isMine || acceptedClaimant,
     photoIds: post.photos.map((photo) => photo.id),
+    desk: post.deskItem?.status ?? null,
   };
 }

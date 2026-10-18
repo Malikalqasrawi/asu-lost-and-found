@@ -15,6 +15,16 @@ export const categoryLabels: Record<Category, string> = {
   OTHER: 'Other',
 };
 
+/** Categories the app suggests leaving at the university security office. */
+export const deskSuggested: Category[] = [
+  'PHONE',
+  'LAPTOP',
+  'WALLET',
+  'ID_CARD',
+  'ELECTRONICS',
+  'JEWELRY',
+];
+
 export const typeLabels: Record<PostType, string> = {
   LOST: 'Lost',
   FOUND: 'Found',
@@ -56,6 +66,21 @@ export function formatDay(isoDate: string): string {
 
 export function formatTimestamp(isoTimestamp: string): string {
   return dayFormat.format(new Date(isoTimestamp));
+}
+
+const timeFormat = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit' });
+const dayAndTimeFormat = new Intl.DateTimeFormat('en-GB', {
+  day: 'numeric',
+  month: 'short',
+  hour: '2-digit',
+  minute: '2-digit',
+});
+
+/** "14:05" for today, "16 Oct, 14:05" for earlier days. */
+export function formatMessageTime(isoTimestamp: string, now = new Date()): string {
+  const date = new Date(isoTimestamp);
+  const today = date.toDateString() === now.toDateString();
+  return (today ? timeFormat : dayAndTimeFormat).format(date);
 }
 
 export function localIsoDate(date: Date): string {

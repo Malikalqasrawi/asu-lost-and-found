@@ -10,6 +10,7 @@ import { DAY_MS, lastDay } from '../common/time.js';
 import type { Post, Prisma } from '../generated/prisma/client.js';
 import { PhotosService } from '../photos/photos.service.js';
 import { PlacesService } from '../places/places.service.js';
+import { lockPost } from '../prisma/locks.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import {
   CreatePostDto,
@@ -238,10 +239,22 @@ export class PostsService {
   async close(id: string, authorId: string): Promise<PostView> {
     const open = await this.findOpenPostOf(id, authorId);
     const post = await this.prisma.$transaction(async (tx) => {
-      await this.claims.closeForPost(tx, id, open.title);
-      return tx.post.update({
-        where: { id },
+      await lockPost(tx, id);
+      if (await tx.deskItem.count({ where: { postId: id } })) {
+        throw new ConflictException(
+          'This item is going to the security office, so it cannot be closed.',
+        );
+      }
+      const closed = await tx.post.updateMany({
+        where: { id, status: 'OPEN' },
         data: { status: 'CLOSED' },
+      });
+      if (closed.count === 0) {
+        throw new ConflictException('Only open posts can be changed');
+      }
+      await this.claims.closeForPost(tx, id, open.title);
+      return tx.post.findUniqueOrThrow({
+        where: { id },
         include: POST_INCLUDE,
       });
     });

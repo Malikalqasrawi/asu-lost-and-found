@@ -2,7 +2,9 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { Tabs } from 'expo-router';
 import type { ColorValue } from 'react-native';
 
+import { useMyHandovers } from '@/api/handovers';
 import { useTheme } from '@/hooks/use-theme';
+import { useSession } from '@/session/session-provider';
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -14,6 +16,9 @@ function icon(name: IconName) {
 
 export default function TabsLayout() {
   const theme = useTheme();
+  const { user } = useSession();
+  const handovers = useMyHandovers();
+  const unread = (handovers.data ?? []).reduce((sum, handover) => sum + handover.unread, 0);
 
   return (
     <Tabs
@@ -28,6 +33,22 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="claims"
         options={{ title: 'My claims', tabBarIcon: icon('hand-left-outline') }}
+      />
+      <Tabs.Screen
+        name="messages"
+        options={{
+          title: 'Messages',
+          tabBarIcon: icon('chatbubbles-outline'),
+          tabBarBadge: unread > 0 ? unread : undefined,
+        }}
+      />
+      <Tabs.Screen
+        name="desk"
+        options={{
+          title: 'Desk',
+          tabBarIcon: icon('shield-checkmark-outline'),
+          href: user?.role === 'SECURITY' ? undefined : null,
+        }}
       />
       <Tabs.Screen
         name="account"

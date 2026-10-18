@@ -26,6 +26,7 @@ function post(overrides: Partial<Post> = {}): Post {
     isMine: false,
     canSeeOriginals: false,
     photoIds: [],
+    desk: null,
     ...overrides,
   };
 }
@@ -243,10 +244,23 @@ describe('claims', () => {
           200,
           claimForm({ activeClaim: myClaim({ status: 'ACCEPTED' }) }),
         ],
+        'GET /posts/post-1/handover': () => [
+          200,
+          {
+            postId: 'post-1',
+            title: 'Black leather wallet',
+            role: 'OWNER',
+            otherPerson: { firstName: 'Sara' },
+            pickupCode: '482913',
+            codeLocked: false,
+            returnedAt: null,
+            unread: 0,
+          },
+        ],
       },
     );
 
-    expect(await screen.findByText(/The finder accepted your claim/)).toBeOnTheScreen();
+    expect(await screen.findByText('482 913')).toBeOnTheScreen();
     expect(
       screen.getByText('You can see the original photos because the finder accepted your claim.'),
     ).toBeOnTheScreen();

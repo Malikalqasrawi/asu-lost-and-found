@@ -5,6 +5,8 @@ import { errorMessage } from '@/api/errors';
 import { useClosePost, usePost, type Post } from '@/api/posts';
 import { Button } from '@/components/button';
 import { ClaimActions } from '@/components/claim-actions';
+import { DeskControls } from '@/components/desk-controls';
+import { FinderHandover } from '@/components/finder-handover';
 import { FormMessage } from '@/components/form-message';
 import { PostBadges } from '@/components/post-badges';
 import { PostFacts } from '@/components/post-facts';
@@ -65,7 +67,9 @@ function PostActions({ post }: { post: Post }) {
 function OwnerActions({ post }: { post: Post }) {
   const router = useRouter();
   const closePost = useClosePost();
-  const reviewsClaims = post.type === 'FOUND' && post.status !== 'CLOSED';
+  const found = post.type === 'FOUND';
+  const reviewsClaims = found && post.status !== 'CLOSED';
+  const accepted = found && (post.status === 'CLAIMED' || post.status === 'RETURNED');
 
   function confirmClose() {
     Alert.alert('Close this post?', 'It disappears from Browse. You can still see it in My posts.', [
@@ -76,11 +80,13 @@ function OwnerActions({ post }: { post: Post }) {
 
   return (
     <>
+      {accepted ? <FinderHandover post={post} /> : null}
+      {found ? <DeskControls post={post} /> : null}
       {reviewsClaims ? (
         <Button title="See claims" onPress={() => router.push(`/posts/${post.id}/claims`)} />
       ) : null}
       <FormMessage message={closePost.isError ? errorMessage(closePost.error) : null} />
-      {post.status === 'OPEN' ? (
+      {post.status === 'OPEN' && !post.desk ? (
         <Button
           title="Close post"
           variant="secondary"

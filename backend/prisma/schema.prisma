@@ -35,6 +35,12 @@ enum ClaimStatus {
   CLOSED
 }
 
+enum DeskStatus {
+  ON_THE_WAY
+  AT_DESK
+  PICKED_UP
+}
+
 enum Category {
   PHONE
   LAPTOP
@@ -69,6 +75,11 @@ model User {
   refreshTokens RefreshToken[]
   posts         Post[]
   claims        Claim[]
+  messages      Message[]
+  finderOf      Handover[]     @relation("HandoverFinder")
+  ownerOf       Handover[]     @relation("HandoverOwner")
+  handedOver    Handover[]     @relation("HandoverReturner")
+  received      DeskItem[]     @relation("DeskReceiver")
 
   @@map("users")
 }
@@ -151,6 +162,8 @@ model Post {
   secret    PostSecret?
   questions ClaimQuestion[]
   claims    Claim[]
+  deskItem  DeskItem?
+  handover  Handover?
 
   @@index([status, createdAt, id])
   @@index([authorId, createdAt])
@@ -209,6 +222,7 @@ model Claim {
   post     Post          @relation(fields: [postId], references: [id], onDelete: Restrict)
   claimant User          @relation(fields: [claimantId], references: [id], onDelete: Restrict)
   answers  ClaimAnswer[]
+  handover Handover?
 
   @@index([postId, status])
   @@index([claimantId, createdAt])
@@ -226,4 +240,67 @@ model ClaimAnswer {
   @@id([claimId, questionId])
   @@index([questionId])
   @@map("claim_answers")
+}
+
+/// A found item the finder takes to the university security office.
+model DeskItem {
+  postId       String     @id @map("post_id") @db.Uuid
+  status       DeskStatus @default(ON_THE_WAY)
+  receivedById String?    @map("received_by_id") @db.Uuid
+  receivedAt   DateTime?  @map("received_at") @db.Timestamptz(3)
+  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  post       Post  @relation(fields: [postId], references: [id], onDelete: Restrict)
+  receivedBy User? @relation("DeskReceiver", fields: [receivedById], references: [id], onDelete: Restrict)
+
+  @@index([status, createdAt])
+  @@index([receivedById])
+  @@map("desk_items")
+}
+
+/// Starts when the finder accepts a claim. The finder and the owner can write
+/// to each other, and the owner's pickup code confirms the item changed hands.
+model Handover {
+  claimId         String    @id @map("claim_id") @db.Uuid
+  postId          String    @unique @map("post_id") @db.Uuid
+  finderId        String    @map("finder_id") @db.Uuid
+  ownerId         String    @map("owner_id") @db.Uuid
+  pickupCode      String    @map("pickup_code")
+  wrongCodes      Int       @default(0) @map("wrong_codes")
+  finderReadAt    DateTime  @default(now()) @map("finder_read_at") @db.Timestamptz(3)
+  ownerReadAt     DateTime  @default(now()) @map("owner_read_at") @db.Timestamptz(3)
+  finderEmailedAt DateTime? @map("finder_emailed_at") @db.Timestamptz(3)
+  ownerEmailedAt  DateTime? @map("owner_emailed_at") @db.Timestamptz(3)
+  returnedAt      DateTime? @map("returned_at") @db.Timestamptz(3)
+  returnedById    String?   @map("returned_by_id") @db.Uuid
+  /// The last message, or the start: the Messages list is sorted by it.
+  lastActivityAt  DateTime  @default(now()) @map("last_activity_at") @db.Timestamptz(3)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  claim      Claim     @relation(fields: [claimId], references: [id], onDelete: Restrict)
+  post       Post      @relation(fields: [postId], references: [id], onDelete: Restrict)
+  finder     User      @relation("HandoverFinder", fields: [finderId], references: [id], onDelete: Restrict)
+  owner      User      @relation("HandoverOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  returnedBy User?     @relation("HandoverReturner", fields: [returnedById], references: [id], onDelete: Restrict)
+  messages   Message[]
+
+  @@index([finderId])
+  @@index([ownerId])
+  @@index([returnedById])
+  @@map("handovers")
+}
+
+model Message {
+  id         String   @id @default(uuid(7)) @db.Uuid
+  handoverId String   @map("handover_id") @db.Uuid
+  senderId   String   @map("sender_id") @db.Uuid
+  text       String
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  handover Handover @relation(fields: [handoverId], references: [claimId], onDelete: Cascade)
+  sender   User     @relation(fields: [senderId], references: [id], onDelete: Restrict)
+
+  @@index([handoverId, createdAt, id])
+  @@index([senderId])
+  @@map("messages")
 }
