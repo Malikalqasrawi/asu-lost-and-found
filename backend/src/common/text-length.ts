@@ -9,6 +9,8 @@ const CONTROL_OR_LINE_BREAK = /[\u0000-\u001F\u007F]/;
 interface TextLengthOptions {
   message: string;
   multiline?: boolean;
+  /** Check every item of an array instead of one string. */
+  each?: boolean;
 }
 
 /**
@@ -19,24 +21,27 @@ interface TextLengthOptions {
 export function TextLength(
   min: number,
   max: number,
-  { message, multiline = false }: TextLengthOptions,
+  { message, multiline = false, each = false }: TextLengthOptions,
 ) {
-  return ValidateBy({
-    name: 'textLength',
-    validator: {
-      validate: (value: unknown) => {
-        if (typeof value !== 'string') {
-          return false;
-        }
-        if ((multiline ? CONTROL : CONTROL_OR_LINE_BREAK).test(value)) {
-          return false;
-        }
-        // Code points on purpose: that is what char_length counts.
-        // eslint-disable-next-line @typescript-eslint/no-misused-spread
-        const length = [...value].length;
-        return length >= min && length <= max;
+  return ValidateBy(
+    {
+      name: 'textLength',
+      validator: {
+        validate: (value: unknown) => {
+          if (typeof value !== 'string') {
+            return false;
+          }
+          if ((multiline ? CONTROL : CONTROL_OR_LINE_BREAK).test(value)) {
+            return false;
+          }
+          // Code points on purpose: that is what char_length counts.
+          // eslint-disable-next-line @typescript-eslint/no-misused-spread
+          const length = [...value].length;
+          return length >= min && length <= max;
+        },
+        defaultMessage: () => message,
       },
-      defaultMessage: () => message,
     },
-  });
+    { each },
+  );
 }

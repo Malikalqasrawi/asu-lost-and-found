@@ -2,7 +2,7 @@
 
 A mobile app that helps students at Applied Science Private University get lost items back. Students post what they lost or found on campus, the app suggests matches between the two, and the real owner proves an item is theirs before it is handed over.
 
-> Work in progress. Accounts and posts with photos are done; claims, handover and matching are being built in stages.
+> Work in progress. Accounts, posts with photos and ownership claims are done; handover and matching are being built in stages.
 
 ## How it works
 
@@ -16,7 +16,7 @@ A mobile app that helps students at Applied Science Private University get lost 
 - [x] Project setup: API, database, mobile app, Docker, CI
 - [x] Accounts with university email only, email verification, roles (student, security office, admin)
 - [x] Lost and found posts with photos (blurred publicly, EXIF removed) and campus locations
-- [ ] Ownership claims with private questions, limited attempts and claim history
+- [x] Ownership claims with private questions, limited attempts and claim history
 - [ ] Handover: in-app messages, pickup code, security office desk
 - [ ] Match suggestions between lost and found posts
 - [ ] Moderation: reports, hidden posts, banned accounts
@@ -39,6 +39,7 @@ asu-lost-and-found/
 │   ├── prisma/              schema and SQL migrations
 │   ├── src/
 │   │   ├── auth/            sign-up, email codes, sign-in, tokens, guards
+│   │   ├── claims/          ownership claims, answers, claim history
 │   │   ├── cli/             set-role command
 │   │   ├── config/          environment validation
 │   │   ├── health/          GET /api/health
@@ -54,7 +55,7 @@ asu-lost-and-found/
 ├── mobile/                  Expo app
 │   └── src/
 │       ├── api/             API client with automatic token refresh
-│       ├── app/             screens (Expo Router): sign-in screens, then Browse, My posts and Account tabs
+│       ├── app/             screens (Expo Router): sign-in screens, then Browse, My posts, My claims and Account tabs
 │       ├── components/      form fields, buttons, screen layout
 │       ├── session/         signed-in state and token storage
 │       └── test/
@@ -73,7 +74,7 @@ You need Docker, Node.js 24 or newer, and an Android emulator (or a phone with E
 cp .env.example .env
 ```
 
-Set `DB_ADMIN_PASSWORD`, `DB_PASSWORD` and `DB_APP_PASSWORD` in `.env`, each to a different output of `openssl rand -hex 24`, and `JWT_SECRET` to the output of `openssl rand -base64 48`. Then:
+Set `DB_ADMIN_PASSWORD`, `DB_PASSWORD` and `DB_APP_PASSWORD` in `.env`, each to a different output of `openssl rand -hex 24`, and `JWT_SECRET` and `SERIAL_HASH_KEY` each to a different output of `openssl rand -base64 48`. Then:
 
 ```bash
 docker compose up -d --build
@@ -102,7 +103,7 @@ Create an account with an `@asu.edu.jo` address and read the code in Mailpit. Th
 
 ### Running the API outside Docker
 
-With only the database running (`docker compose up -d db`), copy `backend/.env.example` to `backend/.env`, fill in the passwords and a `JWT_SECRET`, and run:
+With only the database running (`docker compose up -d db`), copy `backend/.env.example` to `backend/.env`, fill in the passwords, `JWT_SECRET` and the same `SERIAL_HASH_KEY` as in the root `.env`, and run:
 
 ```bash
 cd backend
@@ -130,11 +131,19 @@ All routes start with `/api`. Everything except the ones marked public needs `Au
 | `GET /posts` | no | Open posts, newest first; filters `type`, `category`, `placeId`, search `q`, paging with `cursor` and `limit` |
 | `GET /posts/mine` | no | The signed-in student's posts, closed ones included |
 | `GET /posts/:id` | no | One post (a closed post only for its author) |
-| `POST /posts` | no | Create a post: form fields plus up to 4 photos (`multipart/form-data`) |
+| `POST /posts` | no | Create a post: form fields plus up to 4 photos (`multipart/form-data`); a found item also needs 1 to 3 questions for the owner |
 | `PATCH /posts/:id` | no | Edit your own open post |
 | `POST /posts/:id/close` | no | Close your own post |
 | `GET /photos/:id` | no | The photo other students see (blurred for found items) |
-| `GET /photos/:id/original` | no | The unblurred photo, only for the student who posted it |
+| `GET /photos/:id/original` | no | The unblurred photo, only for the student who posted it or whose claim was accepted |
+| `GET /posts/:id/claim-form` | no | The finder's questions, whether a serial number is needed, claims left and your own claim |
+| `POST /posts/:id/claims` | no | Claim a found item by answering its questions |
+| `GET /posts/:id/claims` | no | For the finder: their private notes and every claim on the item |
+| `POST /claims/:id/accept` | no | Accept a claim; the item is marked claimed and the other waiting claims are closed |
+| `POST /claims/:id/reject` | no | Reject a claim |
+| `POST /claims/:id/withdraw` | no | Take back your own claim while it is waiting |
+| `GET /claims/mine` | no | The signed-in student's claims |
+| `GET /admin/claimants` | no | Admin only: students with their rejected and total claims |
 | `GET /health` | yes | API and database status |
 
 ## Tests
@@ -144,7 +153,7 @@ All routes start with `/api`. Everything except the ones marked public needs `Au
 | `npm test` | `backend/` | Unit tests |
 | `npm run test:e2e` | `backend/` | API tests against PostgreSQL 17 in Docker (Testcontainers) |
 | `npm run lint` / `npm run typecheck` | `backend/`, `mobile/` | oxlint or ESLint, TypeScript |
-| `npm test` | `mobile/` | Sign-in flows on the real screens, API client and token refresh |
+| `npm test` | `mobile/` | Sign-in, posting and claim flows on the real screens, API client and token refresh |
 
 GitHub Actions runs all of them on every pull request, plus a gitleaks secret scan and a Docker build that starts the whole stack and calls the health endpoint.
 
@@ -156,12 +165,15 @@ GitHub Actions runs all of them on every pull request, plus a gitleaks secret sc
 - Passwords hashed with bcrypt (cost 12). Sign-in gives the same answer for a wrong password and an unknown email, and takes the same time. Sign-up, resending a code and password reset give the same answer whether or not an email has an account. Emails never include text typed into the sign-up form, and names may only contain letters, spaces, apostrophes, dots and hyphens.
 - Short-lived access tokens (JWT, HS256) and refresh tokens that work once: each refresh replaces the token, and reusing an old one ends that whole sign-in. Refresh tokens are stored hashed. Changing the password signs out every device and ends access tokens issued before it. In the app the refresh token lives in the device's secure storage.
 - Every route needs a signed-in user unless it is marked public, and the user is checked against the database on every request. Roles are checked by a guard; extra fields such as `role` in a sign-up request are refused.
-- Rate limits: 10 requests an hour that send an email and 10 password or code attempts every 15 minutes per network address, and 5 posts with photos a minute per student (all set in `.env`). Once signed in, requests are counted per student, so students sharing the campus Wi-Fi don't use up each other's limit.
+- Rate limits: 10 requests an hour that send an email (claims included) and 10 password or code attempts every 15 minutes per network address, and 5 posts with photos a minute per student (all set in `.env`). Once signed in, requests are counted per student, so students sharing the campus Wi-Fi don't use up each other's limit.
 - Emails go through an outbox table in the same transaction as the change that triggers them, and are retried with backoff if the mail server is down.
 - Photos: every upload is decoded and saved again as a new JPEG, so only real JPEG, PNG or WebP images are accepted and all EXIF data (GPS position, phone model) is removed. At most 4 photos of 8 MB each per post, and 10 posts a day per student, also when many arrive at the same moment.
 - Uploads can't overload the server: each photo's header is checked before it is decoded (at most 25 megapixels, no 16-bit or animated images), photos are processed one at a time with at most two jobs running across the whole server, and the backend container has a memory limit. The app shrinks photos on the phone before uploading them.
-- Found items are shown blurred to everyone except the student who posted them, so only the real owner can describe the details. Originals are only ever sent to the poster. Photos are fetched by id through the API after the sign-in check; file names on disk are random and never leave the server.
+- Found items are shown blurred to everyone except the student who posted them, so only the real owner can describe the details. Originals are only ever sent to the poster and, once a claim is accepted, to that claimant. Photos are fetched by id through the API after the sign-in check; file names on disk are random and never leave the server.
 - A post that is closed disappears for everyone but its author, photos included. Editing or closing someone else's post answers 404, as if it didn't exist.
+- Claims: claimers answer the finder's questions without seeing the private notes, and only the finder sees the answers next to the notes. Someone else's claim answers 404. A student gets 3 claims per item, and a withdrawn claim counts like a rejected one, so withdrawing and claiming again can't flood the finder with emails. Withdrawn claims disappear from the finder's list. New claims and decisions on one item wait for each other, and the database allows one waiting claim per student per item and one accepted claim per item, so two accepts at the same moment can't both win. Claim emails never include the answers or the notes.
+- Serial numbers and IMEIs are never stored as typed: the server keeps an HMAC-SHA256 fingerprint made with a secret key from `.env` (`SERIAL_HASH_KEY`), so a copy of the database alone can't be used to work them out. It compares that with the claimer's number, and only the finder learns whether it matched.
+- A student or an item that has claims can't be deleted, so the claim history and the 3-claims limit can't be reset. Closing a found item closes its waiting claims and emails those claimants.
 - Emails to a real mail server must use TLS; only the local Mailpit inbox is allowed plain SMTP.
 - Configuration comes from environment variables and is validated at startup. Secrets live only in git-ignored `.env` files; the repository has `.env.example` copies.
 - Security headers through Helmet, request bodies validated and stripped of unknown fields.

@@ -9,6 +9,11 @@ export default function AppLayout() {
         options={{ title: 'Post an item', presentation: 'modal' }}
       />
       <Stack.Screen name="posts/[id]" options={{ title: '' }} />
+      <Stack.Screen
+        name="posts/[id]/claim"
+        options={{ title: 'Claim this item', presentation: 'modal' }}
+      />
+      <Stack.Screen name="posts/[id]/claims" options={{ title: 'Claims' }} />
     </Stack>
   );
 }

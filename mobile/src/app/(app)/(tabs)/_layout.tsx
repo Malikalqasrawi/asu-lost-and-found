@@ -26,6 +26,10 @@ export default function TabsLayout() {
       <Tabs.Screen name="browse" options={{ title: 'Browse', tabBarIcon: icon('search') }} />
       <Tabs.Screen name="mine" options={{ title: 'My posts', tabBarIcon: icon('albums-outline') }} />
       <Tabs.Screen
+        name="claims"
+        options={{ title: 'My claims', tabBarIcon: icon('hand-left-outline') }}
+      />
+      <Tabs.Screen
         name="account"
         options={{ title: 'Account', tabBarIcon: icon('person-circle-outline') }}
       />

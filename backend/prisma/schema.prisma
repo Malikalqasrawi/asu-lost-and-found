@@ -22,7 +22,16 @@ enum PostType {
 
 enum PostStatus {
   OPEN
+  CLAIMED
   RETURNED
+  CLOSED
+}
+
+enum ClaimStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  WITHDRAWN
   CLOSED
 }
 
@@ -59,6 +68,7 @@ model User {
   emailCodes    EmailCode[]
   refreshTokens RefreshToken[]
   posts         Post[]
+  claims        Claim[]
 
   @@map("users")
 }
@@ -135,9 +145,12 @@ model Post {
   createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt    DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  author User        @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  place  CampusPlace @relation(fields: [placeId], references: [id])
-  photos PostPhoto[]
+  author    User            @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  place     CampusPlace     @relation(fields: [placeId], references: [id])
+  photos    PostPhoto[]
+  secret    PostSecret?
+  questions ClaimQuestion[]
+  claims    Claim[]
 
   @@index([status, createdAt, id])
   @@index([authorId, createdAt])
@@ -156,4 +169,61 @@ model PostPhoto {
 
   @@unique([postId, position])
   @@map("post_photos")
+}
+
+/// What only the finder knows about a found item. Kept apart from the post so
+/// that no query for a post can return it by accident.
+model PostSecret {
+  postId       String  @id @map("post_id") @db.Uuid
+  privateNotes String  @default("") @map("private_notes")
+  serialHash   String? @map("serial_hash")
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@map("post_secrets")
+}
+
+model ClaimQuestion {
+  id       String @id @default(uuid(7)) @db.Uuid
+  postId   String @map("post_id") @db.Uuid
+  position Int
+  text     String
+
+  post    Post          @relation(fields: [postId], references: [id], onDelete: Cascade)
+  answers ClaimAnswer[]
+
+  @@unique([postId, position])
+  @@map("claim_questions")
+}
+
+model Claim {
+  id            String      @id @default(uuid(7)) @db.Uuid
+  postId        String      @map("post_id") @db.Uuid
+  claimantId    String      @map("claimant_id") @db.Uuid
+  status        ClaimStatus @default(PENDING)
+  message       String      @default("")
+  serialMatches Boolean?    @map("serial_matches")
+  createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  decidedAt     DateTime?   @map("decided_at") @db.Timestamptz(3)
+
+  post     Post          @relation(fields: [postId], references: [id], onDelete: Restrict)
+  claimant User          @relation(fields: [claimantId], references: [id], onDelete: Restrict)
+  answers  ClaimAnswer[]
+
+  @@index([postId, status])
+  @@index([claimantId, createdAt])
+  @@map("claims")
+}
+
+model ClaimAnswer {
+  claimId    String @map("claim_id") @db.Uuid
+  questionId String @map("question_id") @db.Uuid
+  answer     String
+
+  claim    Claim         @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  question ClaimQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@id([claimId, questionId])
+  @@index([questionId])
+  @@map("claim_answers")
 }
