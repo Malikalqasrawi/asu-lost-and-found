@@ -251,6 +251,7 @@ describe('lost and found posts', () => {
       ...signedIn,
       'GET /posts': () => [200, { items: [mine], nextCursor: null }],
       'GET /posts/post-1': () => [200, mine],
+      'GET /posts/post-1/matches': () => [200, []],
       'POST /posts/post-1/close': () => [200, { ...mine, status: 'CLOSED' }],
     });
     await renderRouter('./src/app');
@@ -392,6 +393,7 @@ describe('lost and found posts', () => {
       ...signedIn,
       'GET /posts': () => [200, { items: [mine], nextCursor: null }],
       'GET /posts/post-1': () => [200, mine],
+      'GET /posts/post-1/matches': () => [200, []],
       'POST /posts/post-1/close': () => [409, { statusCode: 409, message: 'Only open posts can be changed' }],
     });
     await renderRouter('./src/app');

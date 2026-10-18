@@ -68,6 +68,8 @@ model User {
   role             Role      @default(STUDENT)
   emailVerifiedAt  DateTime? @map("email_verified_at") @db.Timestamptz(3)
   tokensValidAfter DateTime? @map("tokens_valid_after") @db.Timestamptz(3)
+  /// When the student was last emailed about a possible match; one a day at most.
+  matchEmailedAt   DateTime? @map("match_emailed_at") @db.Timestamptz(3)
   createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -156,14 +158,16 @@ model Post {
   createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt    DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  author    User            @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  place     CampusPlace     @relation(fields: [placeId], references: [id])
+  author    User             @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  place     CampusPlace      @relation(fields: [placeId], references: [id])
   photos    PostPhoto[]
   secret    PostSecret?
   questions ClaimQuestion[]
   claims    Claim[]
   deskItem  DeskItem?
   handover  Handover?
+  notMine   MatchDismissal[] @relation("DismissedFor")
+  dismissed MatchDismissal[] @relation("DismissedFound")
 
   @@index([status, createdAt, id])
   @@index([authorId, createdAt])
@@ -303,4 +307,18 @@ model Message {
   @@index([handoverId, createdAt, id])
   @@index([senderId])
   @@map("messages")
+}
+
+/// A found post the author of a lost post said is not theirs.
+model MatchDismissal {
+  lostPostId  String   @map("lost_post_id") @db.Uuid
+  foundPostId String   @map("found_post_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  lostPost  Post @relation("DismissedFor", fields: [lostPostId], references: [id], onDelete: Cascade)
+  foundPost Post @relation("DismissedFound", fields: [foundPostId], references: [id], onDelete: Cascade)
+
+  @@id([lostPostId, foundPostId])
+  @@index([foundPostId])
+  @@map("match_dismissals")
 }
