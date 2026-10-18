@@ -1,4 +1,4 @@
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState, type ReactNode } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 
@@ -127,16 +127,29 @@ function PlaceSection({ value, onChange, error }: PlaceSectionProps) {
   );
 }
 
+/** Values another screen can fill in, like "Post what I found" on a lost post. */
+type Prefill = {
+  type?: string;
+  category?: string;
+  placeId?: string;
+};
+
+const asType = (value?: string): PostType | null =>
+  value === 'LOST' || value === 'FOUND' ? value : null;
+const asCategory = (value?: string): Category | null =>
+  value && Object.hasOwn(categoryLabels, value) ? (value as Category) : null;
+
 export default function NewPostScreen() {
   const theme = useTheme();
   const router = useRouter();
   const createPost = useCreatePost();
   const photos = usePhotoPicker(MAX_PHOTOS);
 
-  const [type, setType] = useState<PostType | null>(null);
+  const prefill = useLocalSearchParams<Prefill>();
+  const [type, setType] = useState(() => asType(prefill.type));
   const [title, setTitle] = useState('');
-  const [category, setCategory] = useState<Category | null>(null);
-  const [placeId, setPlaceId] = useState<string | null>(null);
+  const [category, setCategory] = useState(() => asCategory(prefill.category));
+  const [placeId, setPlaceId] = useState<string | null>(prefill.placeId ?? null);
   const [placeDetails, setPlaceDetails] = useState('');
   const [happenedOn, setHappenedOn] = useState(() => daysAgo(0));
   const [description, setDescription] = useState('');

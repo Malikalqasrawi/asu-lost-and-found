@@ -7,10 +7,12 @@ import { Button } from '@/components/button';
 import { ClaimActions } from '@/components/claim-actions';
 import { DeskControls } from '@/components/desk-controls';
 import { FinderHandover } from '@/components/finder-handover';
+import { FoundItPrompt } from '@/components/found-it-prompt';
 import { FormMessage } from '@/components/form-message';
 import { PostBadges } from '@/components/post-badges';
 import { PostFacts } from '@/components/post-facts';
 import { PostPhotos } from '@/components/post-photos';
+import { PossibleMatches } from '@/components/possible-matches';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
@@ -57,19 +59,15 @@ function PostActions({ post }: { post: Post }) {
   if (post.status !== 'OPEN') {
     return null;
   }
-  return (
-    <ThemedText type="small" themeColor="textSecondary" style={styles.centered}>
-      Found it? Contacting the owner comes in a later update.
-    </ThemedText>
-  );
+  return <FoundItPrompt post={post} />;
 }
 
-function OwnerActions({ post }: { post: Post }) {
-  const router = useRouter();
+function ClosePostButton({ post }: { post: Post }) {
   const closePost = useClosePost();
-  const found = post.type === 'FOUND';
-  const reviewsClaims = found && post.status !== 'CLOSED';
-  const accepted = found && (post.status === 'CLAIMED' || post.status === 'RETURNED');
+
+  if (post.status !== 'OPEN' || post.desk) {
+    return null;
+  }
 
   function confirmClose() {
     Alert.alert('Close this post?', 'It disappears from Browse. You can still see it in My posts.', [
@@ -80,20 +78,32 @@ function OwnerActions({ post }: { post: Post }) {
 
   return (
     <>
+      <FormMessage message={closePost.isError ? errorMessage(closePost.error) : null} />
+      <Button
+        title="Close post"
+        variant="secondary"
+        loading={closePost.isPending}
+        onPress={confirmClose}
+      />
+    </>
+  );
+}
+
+function OwnerActions({ post }: { post: Post }) {
+  const router = useRouter();
+  const found = post.type === 'FOUND';
+  const reviewsClaims = found && post.status !== 'CLOSED';
+  const accepted = found && (post.status === 'CLAIMED' || post.status === 'RETURNED');
+
+  return (
+    <>
       {accepted ? <FinderHandover post={post} /> : null}
+      {!found && post.status === 'OPEN' ? <PossibleMatches post={post} /> : null}
       {found ? <DeskControls post={post} /> : null}
       {reviewsClaims ? (
         <Button title="See claims" onPress={() => router.push(`/posts/${post.id}/claims`)} />
       ) : null}
-      <FormMessage message={closePost.isError ? errorMessage(closePost.error) : null} />
-      {post.status === 'OPEN' && !post.desk ? (
-        <Button
-          title="Close post"
-          variant="secondary"
-          loading={closePost.isPending}
-          onPress={confirmClose}
-        />
-      ) : null}
+      <ClosePostButton post={post} />
     </>
   );
 }
@@ -107,5 +117,4 @@ const styles = StyleSheet.create({
     width: '100%',
     alignSelf: 'center',
   },
-  centered: { textAlign: 'center' },
 });

@@ -2,7 +2,7 @@
 
 A mobile app that helps students at Applied Science Private University get lost items back. Students post what they lost or found on campus, the app suggests matches between the two, and the real owner proves an item is theirs before it is handed over.
 
-> Work in progress. Accounts, posts with photos, ownership claims and the handover are done; matching and moderation are being built in stages.
+> Work in progress. Accounts, posts with photos, ownership claims, the handover and match suggestions are done; moderation and polish are next.
 
 ## How it works
 
@@ -18,7 +18,7 @@ A mobile app that helps students at Applied Science Private University get lost 
 - [x] Lost and found posts with photos (blurred publicly, EXIF removed) and campus locations
 - [x] Ownership claims with private questions, limited attempts and claim history
 - [x] Handover: in-app messages, pickup code, security office desk
-- [ ] Match suggestions between lost and found posts
+- [x] Match suggestions between lost and found posts
 - [ ] Moderation: reports, hidden posts, banned accounts
 
 ## Tech stack
@@ -41,6 +41,7 @@ asu-lost-and-found/
 │   │   ├── auth/            sign-up, email codes, sign-in, tokens, guards
 │   │   ├── claims/          ownership claims, answers, claim history
 │   │   ├── handovers/       messages, pickup codes, the security office desk
+│   │   ├── matches/         suggestions between lost and found posts
 │   │   ├── cli/             set-role command
 │   │   ├── config/          environment validation
 │   │   ├── health/          GET /api/health
@@ -156,6 +157,8 @@ All routes start with `/api`. Everything except the ones marked public needs `Au
 | `POST /posts/:id/desk` / `DELETE /posts/:id/desk` | no | The finder takes a found item to the security office, or changes their mind before it arrives |
 | `GET /desk/items?status=` | no | Security staff only: items on the way to the desk, or at the desk |
 | `POST /desk/items/:id/receive` | no | Security staff only: the desk has the item |
+| `GET /posts/:id/matches` | no | For the author of a lost post: found items that may be theirs, with the reasons |
+| `POST /posts/:id/matches/:foundId/dismiss` | no | Hide a suggested found item ("Not mine") |
 | `GET /health` | yes | API and database status |
 
 ## Tests
@@ -165,7 +168,7 @@ All routes start with `/api`. Everything except the ones marked public needs `Au
 | `npm test` | `backend/` | Unit tests |
 | `npm run test:e2e` | `backend/` | API tests against PostgreSQL 17 in Docker (Testcontainers) |
 | `npm run lint` / `npm run typecheck` | `backend/`, `mobile/` | oxlint or ESLint, TypeScript |
-| `npm test` | `mobile/` | Sign-in, posting, claim and handover flows on the real screens, API client and token refresh |
+| `npm test` | `mobile/` | Sign-in, posting, claim, handover and matching flows on the real screens, API client and token refresh |
 
 GitHub Actions runs all of them on every pull request, plus a gitleaks secret scan and a Docker build that starts the whole stack and calls the health endpoint.
 
@@ -187,6 +190,7 @@ GitHub Actions runs all of them on every pull request, plus a gitleaks secret sc
 - Serial numbers and IMEIs are never stored as typed: the server keeps an HMAC-SHA256 fingerprint made with a secret key from `.env` (`SERIAL_HASH_KEY`), so a copy of the database alone can't be used to work them out. It compares that with the claimer's number, and only the finder learns whether it matched.
 - Handover: only the finder and the student whose claim was accepted can read the chat or the handover; anyone else gets 404. The pickup code is shown only to the owner, and only the person holding the item can type it: the finder, or security staff once the item is at the desk (never for their own item). 5 wrong codes lock it until the owner asks for a new one, even when guesses arrive at the same moment, and code attempts count toward the password and code rate limit. Message emails never include the text and go out at most once an hour per chat, only to someone who hasn't had it open for 5 minutes and has opened it since the last email.
 - The security office sees the finder's name and email, the owner's full name once it has the item (to check the student ID at pickup), and the original photos of items it is handling. Only accounts with the security role can open the desk.
+- Match suggestions are shown only to the author of the lost post, with the same blurred photos as Browse. The match email names only the student's own lost item. It goes out only when the titles themselves are alike, to at most 3 students per found item, and nobody gets more than one a day.
 - A student or an item that has claims can't be deleted, so the claim history and the 3-claims limit can't be reset. Closing a found item closes its waiting claims and emails those claimants.
 - Emails to a real mail server must use TLS; only the local Mailpit inbox is allowed plain SMTP.
 - Configuration comes from environment variables and is validated at startup. Secrets live only in git-ignored `.env` files; the repository has `.env.example` copies.
@@ -200,6 +204,7 @@ GitHub Actions runs all of them on every pull request, plus a gitleaks secret sc
 - Signing up again with an email that is still waiting for verification replaces the password, so someone who knows a classmate is signing up can make the classmate's code fail until they sign up once more. It can't be used to take the account over, because verifying needs the password together with the emailed code.
 - Response times of the password reset and resend-code endpoints differ by a few milliseconds between existing and unknown emails.
 - Messages arrive by asking the server every few seconds while a chat is open, not instantly, and there are no push notifications; emails stand in for them.
+- Matching compares spelling, not meaning: "purse" and "wallet" don't count as similar titles, although the category, place and date still bring such items up.
 - An item left at the security office that nobody claims stays listed at the desk; there is no step yet to give it back to the finder or dispose of it.
 
 ## Author

@@ -18,6 +18,7 @@ import {
   UpdatePostDto,
 } from './dto/post.dto.js';
 import { ClaimsService } from '../claims/claims.service.js';
+import { MatchesService } from '../matches/matches.service.js';
 import { SerialHasher } from '../claims/serial.js';
 import { parseCursor, toCursor } from './cursor.js';
 import { canView } from './post-visibility.js';
@@ -94,6 +95,7 @@ export class PostsService {
     private readonly photos: PhotosService,
     private readonly serials: SerialHasher,
     private readonly claims: ClaimsService,
+    private readonly matches: MatchesService,
   ) {}
 
   async create(
@@ -117,7 +119,7 @@ export class PostsService {
         // requests can't all pass the daily limit before any of them is saved.
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${authorId}))`;
         await this.checkDailyLimit(tx, authorId);
-        return tx.post.create({
+        const created = await tx.post.create({
           data: {
             authorId,
             type: dto.type,
@@ -134,6 +136,10 @@ export class PostsService {
           },
           include: POST_INCLUDE,
         });
+        if (created.type === 'FOUND') {
+          await this.matches.alertOwners(tx, created.id);
+        }
+        return created;
       });
       return toPostView(post, authorId);
     } catch (error) {
