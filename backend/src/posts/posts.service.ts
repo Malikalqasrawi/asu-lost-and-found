@@ -152,6 +152,7 @@ export class PostsService {
     const limit = query.limit ?? DEFAULT_PAGE_SIZE;
     const where: Prisma.PostWhereInput = {
       status: 'OPEN',
+      hiddenAt: null,
       type: query.type,
       category: query.category,
       placeId: query.placeId,

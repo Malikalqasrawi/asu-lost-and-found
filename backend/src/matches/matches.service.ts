@@ -47,6 +47,7 @@ export class MatchesService {
         id: { in: scored.map(({ candidate }) => candidate.foundPostId) },
         type: 'FOUND',
         status: 'OPEN',
+        hiddenAt: null,
       },
       include: POST_INCLUDE,
     });

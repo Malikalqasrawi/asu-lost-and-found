@@ -112,11 +112,28 @@ export function refreshSession(): Promise<boolean> {
   return refreshing;
 }
 
+/**
+ * Ids in paths can come from a link that opened the app, so a path may never
+ * climb to another route with dot segments (also spelled %2e) or cut itself
+ * short with #.
+ */
+function checkPath(path: string): void {
+  const [route] = path.split('?');
+  const climbs = route.split('/').some((part) => {
+    const dots = part.replace(/%2e/gi, '.');
+    return dots === '.' || dots === '..';
+  });
+  if (climbs || route.includes('#')) {
+    throw new Error(`Refused an unsafe API path: ${route}`);
+  }
+}
+
 export async function apiRequest<T>(
   method: Method,
   path: string,
   options: RequestOptions = {},
 ): Promise<T> {
+  checkPath(path);
   if (options.auth && accessTokenExpired()) {
     await refreshSession();
   }

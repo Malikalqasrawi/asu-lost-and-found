@@ -18,7 +18,9 @@ export interface Handover {
 export interface Message {
   id: string;
   mine: boolean;
+  /** Empty when a moderator removed the message. */
   text: string;
+  removed: boolean;
   createdAt: string;
 }
 

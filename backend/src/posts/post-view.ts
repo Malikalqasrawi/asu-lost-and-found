@@ -33,6 +33,8 @@ export interface PostView {
   photoIds: string[];
   /** Whether the finder took the item to the university security office. */
   desk: DeskStatus | null;
+  /** A moderator or a ban hid it; only its author can still see it. */
+  hidden: boolean;
 }
 
 /** Only the first name of the poster is shown; storage keys never leave the server. */
@@ -58,5 +60,6 @@ export function toPostView(
     canSeeOriginals: isMine || acceptedClaimant,
     photoIds: post.photos.map((photo) => photo.id),
     desk: post.deskItem?.status ?? null,
+    hidden: post.hiddenAt !== null,
   };
 }

@@ -78,6 +78,13 @@ export class EnvironmentVariables {
   @IsInt()
   @Min(1)
   RATE_LIMIT_UPLOADS_PER_MINUTE: number = 5;
+
+  /** The admin website, the only other site allowed to call the API from a browser. */
+  @Matches(/^https?:\/\/[^/\s]+$/, {
+    message:
+      'ADMIN_SITE_ORIGIN must be an origin like https://admin.example.com',
+  })
+  ADMIN_SITE_ORIGIN: string = 'http://localhost:4001';
 }
 
 export function validateEnv(

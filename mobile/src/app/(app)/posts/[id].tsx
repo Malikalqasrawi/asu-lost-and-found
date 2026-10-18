@@ -20,6 +20,7 @@ import { useTheme } from '@/hooks/use-theme';
 
 export default function PostScreen() {
   const theme = useTheme();
+  const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const post = usePost(id);
 
@@ -37,6 +38,9 @@ export default function PostScreen() {
   const item = post.data;
   return (
     <ScrollView style={{ backgroundColor: theme.background }} contentContainerStyle={styles.content}>
+      {item.hidden ? (
+        <FormMessage message="A moderator hid this post. Other students can't see it." />
+      ) : null}
       <PostPhotos post={item} />
       <PostBadges type={item.type} status={item.status} />
       <ThemedText type="subtitle" accessibilityRole="header">
@@ -45,6 +49,13 @@ export default function PostScreen() {
       <PostFacts post={item} />
       {item.description ? <ThemedText>{item.description}</ThemedText> : null}
       <PostActions post={item} />
+      {item.isMine ? null : (
+        <Button
+          title="Report this post"
+          variant="link"
+          onPress={() => router.push({ pathname: '/report', params: { post: item.id } })}
+        />
+      )}
     </ScrollView>
   );
 }

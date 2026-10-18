@@ -22,7 +22,9 @@ export interface HandoverView {
 export interface MessageView {
   id: string;
   mine: boolean;
+  /** Empty when a moderator removed the message. */
   text: string;
+  removed: boolean;
   createdAt: Date;
 }
 
@@ -67,7 +69,8 @@ export function toMessageView(
   return {
     id: message.id,
     mine: message.senderId === viewerId,
-    text: message.text,
+    text: message.removedAt ? '' : message.text,
+    removed: message.removedAt !== null,
     createdAt: message.createdAt,
   };
 }

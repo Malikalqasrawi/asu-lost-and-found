@@ -16,7 +16,8 @@ function preview(handover: HandoverSummary): string {
   if (!last) {
     return 'No messages yet';
   }
-  return last.mine ? `You: ${last.text}` : last.text;
+  const text = last.removed ? 'Message removed' : last.text;
+  return last.mine ? `You: ${text}` : text;
 }
 
 export const HandoverCard = memo(function HandoverCard({ handover }: { handover: HandoverSummary }) {

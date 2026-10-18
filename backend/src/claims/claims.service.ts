@@ -159,6 +159,7 @@ export class ClaimsService {
     const claimable =
       post?.type === 'FOUND' &&
       post.status !== 'CLOSED' &&
+      !post.hiddenAt &&
       post.authorId !== studentId;
     if (!post || !claimable) {
       throw notFound();
@@ -228,12 +229,17 @@ export class ClaimsService {
   /** Accepting one claim marks the item claimed and closes every other waiting claim. */
   async accept(claimId: string, finderId: string): Promise<FinderClaimView> {
     const claim = await this.claimForFinder(claimId, finderId);
+    if (claim.post.hiddenAt) {
+      throw new ConflictException(
+        'A moderator hid this item, so its claims are closed.',
+      );
+    }
     try {
       await this.prisma.$transaction(async (tx) => {
         await lockPost(tx, claim.postId);
         const now = new Date();
         const opened = await tx.post.updateMany({
-          where: { id: claim.postId, status: 'OPEN' },
+          where: { id: claim.postId, status: 'OPEN', hiddenAt: null },
           data: { status: 'CLAIMED' },
         });
         const accepted = await tx.claim.updateMany({
@@ -333,9 +339,10 @@ export class ClaimsService {
     tx: Prisma.TransactionClient,
     postId: string,
     title: string,
+    email: (to: string, title: string) => MailMessage = postClosedEmail,
   ): Promise<void> {
     await lockPost(tx, postId);
-    await this.closeWaiting(tx, postId, title, postClosedEmail);
+    await this.closeWaiting(tx, postId, title, email);
   }
 
   private async closeWaiting(
@@ -372,7 +379,7 @@ export class ClaimsService {
     const claim = await this.prisma.claim.findUnique({
       where: { id: claimId },
       include: {
-        post: { select: { authorId: true, title: true } },
+        post: { select: { authorId: true, title: true, hiddenAt: true } },
         claimant: { select: { email: true } },
       },
     });

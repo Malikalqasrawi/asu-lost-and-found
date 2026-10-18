@@ -29,6 +29,7 @@ function post(overrides: Partial<Post> = {}): Post {
     canSeeOriginals: true,
     photoIds: [],
     desk: null,
+    hidden: false,
     ...overrides,
   };
 }
@@ -70,6 +71,7 @@ function message(overrides: Partial<Message> = {}): Message {
     id: 'message-1',
     mine: false,
     text: 'I am at the library until 3',
+    removed: false,
     createdAt: '2026-10-17T11:00:00.000Z',
     ...overrides,
   };

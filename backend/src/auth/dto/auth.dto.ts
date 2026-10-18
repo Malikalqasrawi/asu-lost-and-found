@@ -73,3 +73,12 @@ export class RefreshTokenDto {
   @Length(20, 200)
   refreshToken: string;
 }
+
+export class AdminCodeDto {
+  @IsString()
+  @MaxLength(2000)
+  challenge: string;
+
+  @Matches(/^\d{6}$/, { message: 'The code has 6 digits' })
+  code: string;
+}

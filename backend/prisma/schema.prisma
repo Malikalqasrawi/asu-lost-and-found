@@ -35,6 +35,35 @@ enum ClaimStatus {
   CLOSED
 }
 
+/// Why a post is hidden from everyone but its author.
+enum HideCause {
+  MODERATION
+  BAN
+}
+
+enum ReportReason {
+  SPAM
+  FAKE
+  OFFENSIVE
+  PERSONAL_DETAILS
+  OTHER
+}
+
+enum ReportStatus {
+  OPEN
+  RESOLVED
+  DISMISSED
+}
+
+enum ModerationAction {
+  HIDE_POST
+  RESTORE_POST
+  REMOVE_MESSAGE
+  DISMISS_REPORTS
+  BAN
+  UNBAN
+}
+
 enum DeskStatus {
   ON_THE_WAY
   AT_DESK
@@ -58,6 +87,7 @@ enum Category {
 enum EmailCodePurpose {
   VERIFY_EMAIL
   RESET_PASSWORD
+  ADMIN_SIGN_IN
 }
 
 model User {
@@ -70,6 +100,10 @@ model User {
   tokensValidAfter DateTime? @map("tokens_valid_after") @db.Timestamptz(3)
   /// When the student was last emailed about a possible match; one a day at most.
   matchEmailedAt   DateTime? @map("match_emailed_at") @db.Timestamptz(3)
+  /// Set while the account is banned; no end date means for good.
+  bannedAt         DateTime? @map("banned_at") @db.Timestamptz(3)
+  bannedUntil      DateTime? @map("banned_until") @db.Timestamptz(3)
+  banReason        String?   @map("ban_reason")
   createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -78,10 +112,14 @@ model User {
   posts         Post[]
   claims        Claim[]
   messages      Message[]
-  finderOf      Handover[]     @relation("HandoverFinder")
-  ownerOf       Handover[]     @relation("HandoverOwner")
-  handedOver    Handover[]     @relation("HandoverReturner")
-  received      DeskItem[]     @relation("DeskReceiver")
+  finderOf      Handover[]      @relation("HandoverFinder")
+  ownerOf       Handover[]      @relation("HandoverOwner")
+  handedOver    Handover[]      @relation("HandoverReturner")
+  received      DeskItem[]      @relation("DeskReceiver")
+  reports       Report[]        @relation("Reporter")
+  resolved      Report[]        @relation("ReportResolver")
+  moderated     ModerationLog[] @relation("Moderator")
+  moderatedOn   ModerationLog[] @relation("ModeratedStudent")
 
   @@map("users")
 }
@@ -103,13 +141,15 @@ model EmailCode {
 }
 
 model RefreshToken {
-  id        String    @id @default(uuid(7)) @db.Uuid
-  userId    String    @map("user_id") @db.Uuid
-  familyId  String    @map("family_id") @db.Uuid
-  tokenHash String    @unique @map("token_hash")
-  expiresAt DateTime  @map("expires_at") @db.Timestamptz(3)
-  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(3)
-  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  id           String    @id @default(uuid(7)) @db.Uuid
+  userId       String    @map("user_id") @db.Uuid
+  familyId     String    @map("family_id") @db.Uuid
+  tokenHash    String    @unique @map("token_hash")
+  expiresAt    DateTime  @map("expires_at") @db.Timestamptz(3)
+  revokedAt    DateTime? @map("revoked_at") @db.Timestamptz(3)
+  /// Issued by the admin website after the emailed code; only these refresh into admin access.
+  adminSession Boolean   @default(false) @map("admin_session")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -155,19 +195,23 @@ model Post {
   placeId      String     @map("place_id") @db.Uuid
   placeDetails String?    @map("place_details")
   happenedOn   DateTime   @map("happened_on") @db.Date
+  hiddenAt     DateTime?  @map("hidden_at") @db.Timestamptz(3)
+  hideCause    HideCause? @map("hide_cause")
   createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt    DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  author    User             @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  place     CampusPlace      @relation(fields: [placeId], references: [id])
-  photos    PostPhoto[]
-  secret    PostSecret?
-  questions ClaimQuestion[]
-  claims    Claim[]
-  deskItem  DeskItem?
-  handover  Handover?
-  notMine   MatchDismissal[] @relation("DismissedFor")
-  dismissed MatchDismissal[] @relation("DismissedFound")
+  author     User             @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  place      CampusPlace      @relation(fields: [placeId], references: [id])
+  photos     PostPhoto[]
+  secret     PostSecret?
+  questions  ClaimQuestion[]
+  claims     Claim[]
+  deskItem   DeskItem?
+  handover   Handover?
+  moderation ModerationLog[]
+  notMine    MatchDismissal[] @relation("DismissedFor")
+  dismissed  MatchDismissal[] @relation("DismissedFound")
+  reports    Report[]
 
   @@index([status, createdAt, id])
   @@index([authorId, createdAt])
@@ -295,14 +339,18 @@ model Handover {
 }
 
 model Message {
-  id         String   @id @default(uuid(7)) @db.Uuid
-  handoverId String   @map("handover_id") @db.Uuid
-  senderId   String   @map("sender_id") @db.Uuid
+  id         String    @id @default(uuid(7)) @db.Uuid
+  handoverId String    @map("handover_id") @db.Uuid
+  senderId   String    @map("sender_id") @db.Uuid
   text       String
-  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  /// A moderator removed it; the app shows a placeholder instead of the text.
+  removedAt  DateTime? @map("removed_at") @db.Timestamptz(3)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  handover Handover @relation(fields: [handoverId], references: [claimId], onDelete: Cascade)
-  sender   User     @relation(fields: [senderId], references: [id], onDelete: Restrict)
+  handover   Handover        @relation(fields: [handoverId], references: [claimId], onDelete: Cascade)
+  sender     User            @relation(fields: [senderId], references: [id], onDelete: Restrict)
+  reports    Report[]
+  moderation ModerationLog[]
 
   @@index([handoverId, createdAt, id])
   @@index([senderId])
@@ -321,4 +369,56 @@ model MatchDismissal {
   @@id([lostPostId, foundPostId])
   @@index([foundPostId])
   @@map("match_dismissals")
+}
+
+/// A student's report of a post or of a chat message, for an admin to review.
+model Report {
+  id           String       @id @default(uuid(7)) @db.Uuid
+  reporterId   String       @map("reporter_id") @db.Uuid
+  postId       String?      @map("post_id") @db.Uuid
+  messageId    String?      @map("message_id") @db.Uuid
+  reason       ReportReason
+  details      String       @default("")
+  status       ReportStatus @default(OPEN)
+  resolvedById String?      @map("resolved_by_id") @db.Uuid
+  resolvedAt   DateTime?    @map("resolved_at") @db.Timestamptz(3)
+  createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  reporter   User     @relation("Reporter", fields: [reporterId], references: [id], onDelete: Restrict)
+  post       Post?    @relation(fields: [postId], references: [id], onDelete: Restrict)
+  message    Message? @relation(fields: [messageId], references: [id], onDelete: Restrict)
+  resolvedBy User?    @relation("ReportResolver", fields: [resolvedById], references: [id], onDelete: Restrict)
+
+  @@unique([reporterId, postId])
+  @@unique([reporterId, messageId])
+  @@index([status, createdAt])
+  @@index([postId])
+  @@index([messageId])
+  @@index([resolvedById])
+  @@map("reports")
+}
+
+/// What each admin did, and when. Only ever added to.
+model ModerationLog {
+  id        String           @id @default(uuid(7)) @db.Uuid
+  adminId   String           @map("admin_id") @db.Uuid
+  action    ModerationAction
+  postId    String?          @map("post_id") @db.Uuid
+  messageId String?          @map("message_id") @db.Uuid
+  studentId String?          @map("student_id") @db.Uuid
+  /// The ban reason, for bans.
+  note      String           @default("")
+  createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  admin   User     @relation("Moderator", fields: [adminId], references: [id], onDelete: Restrict)
+  post    Post?    @relation(fields: [postId], references: [id], onDelete: Restrict)
+  message Message? @relation(fields: [messageId], references: [id], onDelete: Restrict)
+  student User?    @relation("ModeratedStudent", fields: [studentId], references: [id], onDelete: Restrict)
+
+  @@index([createdAt])
+  @@index([adminId])
+  @@index([postId])
+  @@index([messageId])
+  @@index([studentId])
+  @@map("moderation_log")
 }

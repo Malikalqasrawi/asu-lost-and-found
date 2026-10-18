@@ -1,9 +1,11 @@
 import type { PostStatus } from '../generated/prisma/client.js';
 
-/** Closed posts are only seen by their author. Open and returned ones by any student. */
+/** Closed and hidden posts are only seen by their author. The rest by any student. */
 export function canView(
-  post: { status: PostStatus; authorId: string },
+  post: { status: PostStatus; authorId: string; hiddenAt: Date | null },
   viewerId: string,
 ): boolean {
-  return post.status !== 'CLOSED' || post.authorId === viewerId;
+  return (
+    post.authorId === viewerId || (post.status !== 'CLOSED' && !post.hiddenAt)
+  );
 }

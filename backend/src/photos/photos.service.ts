@@ -109,9 +109,11 @@ export class PhotosService {
   }
 
   /** The blurred (found) or resized (lost) version that anyone who can see the post gets. */
-  async readPublic(photoId: string, viewerId: string): Promise<Buffer> {
+  /** What students see; admins also see it on hidden posts, to decide about reports. */
+  async readPublic(photoId: string, viewer: AuthUser): Promise<Buffer> {
     const photo = await this.findWithPost(photoId);
-    if (!photo || !canView(photo.post, viewerId)) {
+    const moderating = viewer.role === 'ADMIN' && viewer.adminSession;
+    if (!photo || !(canView(photo.post, viewer.id) || moderating)) {
       throw new NotFoundException('This photo is not available.');
     }
     return this.storage.read(photo.publicKey);
@@ -143,7 +145,9 @@ export class PhotosService {
   private findWithPost(photoId: string) {
     return this.prisma.postPhoto.findUnique({
       where: { id: photoId },
-      include: { post: { select: { status: true, authorId: true } } },
+      include: {
+        post: { select: { status: true, authorId: true, hiddenAt: true } },
+      },
     });
   }
 }

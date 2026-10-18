@@ -2,8 +2,8 @@ import type { ClaimForm, FinderClaims } from '../src/claims/claims.service.js';
 import type { MyClaimView } from '../src/claims/claim-view.js';
 import type { PlaceView } from '../src/places/places.service.js';
 import type { PostView } from '../src/posts/post-view.js';
-import { UsersService } from '../src/users/users.service.js';
 import { createVerifiedUser } from './support/accounts.js';
+import { signInAsAdmin } from './support/admin.js';
 import { createTestApp, TestContext } from './support/app.js';
 import { photoWithGps } from './support/images.js';
 
@@ -642,10 +642,12 @@ describe('claims', () => {
         const sent = await claim(guesser, post.id);
         await as(finder).post(`/api/claims/${sent.id}/reject`).expect(200);
       }
-      const admin = await student();
-      await ctx.app.get(UsersService).setRole(admin.email, 'ADMIN');
+      const admin = await signInAsAdmin(ctx);
 
       await as(guesser).get('/api/admin/claimants').expect(403);
+      await as({ email: admin.email, token: admin.appToken })
+        .get('/api/admin/claimants')
+        .expect(403);
       const history = (await as(admin).get('/api/admin/claimants').expect(200))
         .body as { email: string; rejected: number; claims: number }[];
 

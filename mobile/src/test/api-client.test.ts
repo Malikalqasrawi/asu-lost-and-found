@@ -34,6 +34,15 @@ describe('apiRequest', () => {
     expect(JSON.parse(init.body)).toEqual({ email: 'a@asu.edu.jo' });
   });
 
+  it('refuses a path that climbs to another route', async () => {
+    fetchMock = mockApi({});
+
+    for (const path of ['/posts/../claims/1/accept', '/posts/%2e%2e/x', '/posts/1#/close']) {
+      await expect(apiRequest('POST', path)).rejects.toThrow('Refused an unsafe API path');
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('returns nothing for 204 No Content', async () => {
     fetchMock = mockApi({ 'POST /auth/logout': () => [204] });
 
@@ -42,7 +51,10 @@ describe('apiRequest', () => {
 
   it('turns an error response into an ApiError with the message and code', async () => {
     fetchMock = mockApi({
-      'POST /auth/login': () => [403, { message: 'Verify your email first.', code: 'EMAIL_NOT_VERIFIED' }],
+      'POST /auth/login': () => [
+        403,
+        { message: 'Verify your email first.', code: 'EMAIL_NOT_VERIFIED' },
+      ],
     });
 
     const error = await apiRequest('POST', '/auth/login').catch((e: unknown) => e);
@@ -60,7 +72,9 @@ describe('apiRequest', () => {
       'POST /auth/register': () => [400, { message: ['Enter a valid email address', 'too short'] }],
     });
 
-    await expect(apiRequest('POST', '/auth/register')).rejects.toThrow('Enter a valid email address');
+    await expect(apiRequest('POST', '/auth/register')).rejects.toThrow(
+      'Enter a valid email address',
+    );
   });
 
   it('explains a missing base url instead of calling the network', async () => {
@@ -122,7 +136,10 @@ describe('apiRequest', () => {
     fetchMock = mockApi({
       'GET /users/me': (_body, headers) =>
         headers.Authorization === 'Bearer new-access' ? [200, {}] : [401],
-      'POST /auth/refresh': () => [200, { accessToken: 'new-access', refreshToken: 'refresh-2', expiresIn: 900 }],
+      'POST /auth/refresh': () => [
+        200,
+        { accessToken: 'new-access', refreshToken: 'refresh-2', expiresIn: 900 },
+      ],
     });
 
     await Promise.all([

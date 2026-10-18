@@ -60,6 +60,7 @@ services:
       RATE_LIMIT_EMAILS_PER_HOUR: ${RATE_LIMIT_EMAILS_PER_HOUR:-10}
       RATE_LIMIT_LOGINS_PER_15_MIN: ${RATE_LIMIT_LOGINS_PER_15_MIN:-10}
       RATE_LIMIT_UPLOADS_PER_MINUTE: ${RATE_LIMIT_UPLOADS_PER_MINUTE:-5}
+      ADMIN_SITE_ORIGIN: ${ADMIN_SITE_ORIGIN:-http://localhost:4001}
     volumes:
       - uploads:/app/uploads
     ports:
@@ -69,6 +70,19 @@ services:
         condition: service_completed_successfully
       mailpit:
         condition: service_started
+
+  admin:
+    build:
+      context: ./admin
+      args:
+        VITE_API_URL: ${ADMIN_API_URL:-http://localhost:4000/api}
+    restart: unless-stopped
+    environment:
+      API_ORIGIN: ${ADMIN_API_ORIGIN:-http://localhost:4000}
+    ports:
+      - "127.0.0.1:4001:8080"
+    depends_on:
+      - backend
 
 volumes:
   db-data:

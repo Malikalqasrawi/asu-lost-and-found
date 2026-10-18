@@ -6,9 +6,15 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { EnvironmentVariables } from '../config/env.validation.js';
-import { Prisma } from '../generated/prisma/client.js';
+import { Prisma, type User } from '../generated/prisma/client.js';
 import { OutboxService } from '../mail/outbox.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import {
+  banHasEnded,
+  bannedMessage,
+  isBanned,
+  liftBan,
+} from '../users/bans.js';
 import {
   toProfile,
   UserProfile,
@@ -151,7 +157,21 @@ export class AuthService {
         code: 'EMAIL_NOT_VERIFIED',
       });
     }
+    await this.checkNotBanned(user);
     return { ...(await this.tokens.issue(user)), user: toProfile(user) };
+  }
+
+  /** Only after the password matched, so it never tells a stranger about a ban. */
+  private async checkNotBanned(user: User): Promise<void> {
+    if (isBanned(user)) {
+      throw new ForbiddenException({
+        message: bannedMessage(user),
+        code: 'ACCOUNT_BANNED',
+      });
+    }
+    if (banHasEnded(user)) {
+      await this.prisma.$transaction((tx) => liftBan(tx, user.id));
+    }
   }
 
   async forgotPassword(email: string): Promise<void> {
