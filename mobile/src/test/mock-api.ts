@@ -44,6 +44,7 @@ export const signedIn = {
     { accessToken: 'access-2', refreshToken: 'refresh-2', expiresIn: 900 },
   ],
   'GET /users/me': (): Reply => [200, authResponse.user],
+  'GET /handovers/mine': (): Reply => [200, []],
 };
 
 export const emptyBrowse = {

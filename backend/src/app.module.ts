@@ -5,6 +5,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { AuthModule } from './auth/auth.module.js';
 import { ClaimsModule } from './claims/claims.module.js';
+import { HandoversModule } from './handovers/handovers.module.js';
 import { JwtAuthGuard } from './auth/jwt-auth.guard.js';
 import { RolesGuard } from './auth/roles.guard.js';
 import { validateEnv } from './config/env.validation.js';
@@ -41,6 +42,7 @@ import { UsersModule } from './users/users.module.js';
     PhotosModule,
     PostsModule,
     ClaimsModule,
+    HandoversModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

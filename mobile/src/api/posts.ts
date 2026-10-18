@@ -6,6 +6,7 @@ import {
 } from '@tanstack/react-query';
 
 import { apiRequest, apiUrl } from '@/api/client';
+import type { DeskStatus } from '@/api/desk';
 
 export type PostType = 'LOST' | 'FOUND';
 export type PostStatus = 'OPEN' | 'CLAIMED' | 'RETURNED' | 'CLOSED';
@@ -42,6 +43,7 @@ export interface Post {
   isMine: boolean;
   canSeeOriginals: boolean;
   photoIds: string[];
+  desk: DeskStatus | null;
 }
 
 export interface PostPage {

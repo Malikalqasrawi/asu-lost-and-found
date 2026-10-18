@@ -12,22 +12,12 @@ import { errorMessage } from '@/api/errors';
 import type { Post } from '@/api/posts';
 import { Button } from '@/components/button';
 import { FormMessage } from '@/components/form-message';
-import { ThemedText } from '@/components/themed-text';
+import { Note } from '@/components/note';
+import { OwnerHandover } from '@/components/owner-handover';
 import { Spacing } from '@/constants/theme';
-
-function Note({ text }: { text: string }) {
-  return (
-    <ThemedText type="small" themeColor="textSecondary" style={styles.centered}>
-      {text}
-    </ThemedText>
-  );
-}
 
 /** Why the student can't claim the item right now, if they can't. */
 function blockedReason(post: Post, form: ClaimForm): string | null {
-  if (form.activeClaim?.status === 'ACCEPTED') {
-    return 'The finder accepted your claim. Arranging the handover comes in the next update.';
-  }
   if (post.status !== 'OPEN') {
     return 'The finder already gave this item to its owner.';
   }
@@ -80,6 +70,9 @@ export function ClaimActions({ post }: { post: Post }) {
   if (activeClaim?.status === 'PENDING') {
     return <PendingClaim claim={activeClaim} />;
   }
+  if (activeClaim?.status === 'ACCEPTED') {
+    return <OwnerHandover post={post} />;
+  }
   const reason = blockedReason(post, form.data);
   if (reason) {
     return <Note text={reason} />;
@@ -97,5 +90,4 @@ export function ClaimActions({ post }: { post: Post }) {
 
 const styles = StyleSheet.create({
   box: { gap: Spacing.two },
-  centered: { textAlign: 'center' },
 });

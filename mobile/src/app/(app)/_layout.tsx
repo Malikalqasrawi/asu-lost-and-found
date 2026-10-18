@@ -14,6 +14,11 @@ export default function AppLayout() {
         options={{ title: 'Claim this item', presentation: 'modal' }}
       />
       <Stack.Screen name="posts/[id]/claims" options={{ title: 'Claims' }} />
+      <Stack.Screen name="posts/[id]/chat" options={{ title: 'Messages' }} />
+      <Stack.Screen
+        name="posts/[id]/pickup"
+        options={{ title: 'Pickup code', presentation: 'modal' }}
+      />
     </Stack>
   );
 }

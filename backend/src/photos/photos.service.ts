@@ -5,6 +5,8 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
+import type { AuthUser } from '../auth/auth-user.js';
+import type { DeskStatus, PostStatus } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { canView } from '../posts/post-visibility.js';
 import { FileStorage } from '../storage/file-storage.js';
@@ -25,6 +27,26 @@ const newKey = () => `${randomUUID()}.jpg`;
 // Server-wide: two photos are resized at a time and a few more may wait.
 const MAX_RUNNING_JOBS = 2;
 const MAX_WAITING_JOBS = 16;
+
+interface PhotoPost {
+  authorId: string;
+  status: PostStatus;
+  deskItem: { status: DeskStatus } | null;
+  /** The viewer's accepted claim on the post, if any. */
+  claims: { id: string }[];
+}
+
+/**
+ * The unblurred photo is for the poster, the student whose claim they
+ * accepted, and the security office while it handles the item.
+ */
+function mayReadOriginal(post: PhotoPost, viewer: AuthUser): boolean {
+  if (post.authorId === viewer.id || post.claims.length > 0) {
+    return true;
+  }
+  const stillOpen = post.status === 'OPEN' || post.status === 'CLAIMED';
+  return viewer.role === 'SECURITY' && Boolean(post.deskItem) && stillOpen;
+}
 
 @Injectable()
 export class PhotosService {
@@ -95,25 +117,24 @@ export class PhotosService {
     return this.storage.read(photo.publicKey);
   }
 
-  /** The unblurred photo, for the poster and the student whose claim they accepted. */
-  async readOriginal(photoId: string, viewerId: string): Promise<Buffer> {
+  async readOriginal(photoId: string, viewer: AuthUser): Promise<Buffer> {
     const photo = await this.prisma.postPhoto.findUnique({
       where: { id: photoId },
       include: {
         post: {
           select: {
             authorId: true,
+            status: true,
+            deskItem: { select: { status: true } },
             claims: {
-              where: { claimantId: viewerId, status: 'ACCEPTED' },
+              where: { claimantId: viewer.id, status: 'ACCEPTED' },
               select: { id: true },
             },
           },
         },
       },
     });
-    const allowed =
-      photo?.post.authorId === viewerId || Boolean(photo?.post.claims.length);
-    if (!photo || !allowed) {
+    if (!photo || !mayReadOriginal(photo.post, viewer)) {
       throw new NotFoundException('This photo is not available.');
     }
     return this.storage.read(photo.originalKey);

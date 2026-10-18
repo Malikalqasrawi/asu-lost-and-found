@@ -35,6 +35,6 @@ export class PhotosController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: AuthUser,
   ): Promise<StreamableFile> {
-    return new StreamableFile(await this.photos.readOriginal(id, user.id));
+    return new StreamableFile(await this.photos.readOriginal(id, user));
   }
 }
