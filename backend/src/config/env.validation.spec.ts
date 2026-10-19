@@ -19,7 +19,8 @@ describe('validateEnv', () => {
     const env = validateEnv(required);
 
     expect(env.PORT).toBe(3000);
-    expect(env.ALLOWED_EMAIL_DOMAINS).toBe('asu.edu.jo');
+    expect(env.STUDENT_EMAIL_DOMAIN).toBe('students.asu.edu.jo');
+    expect(env.STAFF_EMAIL_DOMAINS).toBe('asu.edu.jo');
     expect(env.MAIL_SECURE).toBe(false);
     expect(env.RATE_LIMIT_EMAILS_PER_HOUR).toBe(10);
   });
@@ -70,16 +71,22 @@ describe('validateEnv', () => {
   it('normalizes the allowed email domains', () => {
     const env = validateEnv({
       ...required,
-      ALLOWED_EMAIL_DOMAINS: ' ASU.edu.jo, students.asu.edu.jo ',
+      STAFF_EMAIL_DOMAINS: ' ASU.edu.jo, alumni.asu.edu.jo ',
     });
 
-    expect(env.ALLOWED_EMAIL_DOMAINS).toBe('asu.edu.jo,students.asu.edu.jo');
+    expect(env.STAFF_EMAIL_DOMAINS).toBe('asu.edu.jo,alumni.asu.edu.jo');
   });
 
   it('rejects a malformed domain list', () => {
     expect(() =>
-      validateEnv({ ...required, ALLOWED_EMAIL_DOMAINS: '@asu.edu.jo' }),
-    ).toThrow(/ALLOWED_EMAIL_DOMAINS/);
+      validateEnv({ ...required, STAFF_EMAIL_DOMAINS: '@asu.edu.jo' }),
+    ).toThrow(/STAFF_EMAIL_DOMAINS/);
+    expect(() =>
+      validateEnv({ ...required, STUDENT_EMAIL_DOMAIN: 'a,b.com' }),
+    ).toThrow(/STUDENT_EMAIL_DOMAIN/);
+    expect(
+      validateEnv({ ...required, STAFF_EMAIL_DOMAINS: '' }).STAFF_EMAIL_DOMAINS,
+    ).toBe('');
   });
 
   it('does not include secret values in the error message', () => {
@@ -88,5 +95,22 @@ describe('validateEnv', () => {
     expect(() =>
       validateEnv({ ...required, DATABASE_URL: secretUrl, JWT_SECRET: 'abc' }),
     ).not.toThrow(/hunter2|abc/);
+  });
+
+  it('leaves Microsoft sign-in off when its IDs are empty', () => {
+    const env = validateEnv({
+      ...required,
+      MICROSOFT_CLIENT_ID: '',
+      MICROSOFT_TENANT_ID: '',
+    });
+
+    expect(env.MICROSOFT_CLIENT_ID).toBeUndefined();
+    expect(env.MICROSOFT_TENANT_ID).toBeUndefined();
+  });
+
+  it('rejects Microsoft IDs that are not GUIDs', () => {
+    expect(() =>
+      validateEnv({ ...required, MICROSOFT_TENANT_ID: 'asu.edu.jo' }),
+    ).toThrow(/MICROSOFT_TENANT_ID must be the Directory \(tenant\) ID/);
   });
 });

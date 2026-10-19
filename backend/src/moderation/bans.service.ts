@@ -51,14 +51,15 @@ export class BansService {
 
   async search(query = ''): Promise<StudentView[]> {
     const users = await this.prisma.user.findMany({
-      where: query
-        ? {
-            OR: [
-              { email: { contains: query, mode: 'insensitive' } },
-              { fullName: { contains: query, mode: 'insensitive' } },
-            ],
-          }
-        : {},
+      where: {
+        deletedAt: null,
+        ...(query && {
+          OR: [
+            { email: { contains: query, mode: 'insensitive' } },
+            { fullName: { contains: query, mode: 'insensitive' } },
+          ],
+        }),
+      },
       orderBy: { createdAt: 'desc' },
       take: 50,
     });
@@ -113,7 +114,7 @@ export class BansService {
 
   private async bannable(userId: string, adminId: string): Promise<User> {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user) {
+    if (!user || user.deletedAt) {
       throw new NotFoundException('No student has this id.');
     }
     if (user.id === adminId || user.role === 'ADMIN') {

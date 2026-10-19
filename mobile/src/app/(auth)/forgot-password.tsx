@@ -41,7 +41,7 @@ export default function ForgotPasswordScreen() {
       <FormMessage message={error} />
       <TextField
         label="University email"
-        placeholder="you@asu.edu.jo"
+        placeholder="123456789@students.asu.edu.jo"
         value={email}
         onChangeText={setEmail}
         autoCapitalize="none"

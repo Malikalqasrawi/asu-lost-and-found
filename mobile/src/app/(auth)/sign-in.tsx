@@ -6,8 +6,10 @@ import { authApi } from '@/api/auth';
 import { errorMessage, isApiError } from '@/api/errors';
 import { Button } from '@/components/button';
 import { FormMessage } from '@/components/form-message';
+import { MicrosoftButton } from '@/components/microsoft-button';
 import { Screen } from '@/components/screen';
 import { TextField } from '@/components/text-field';
+import { microsoftSettings } from '@/session/microsoft';
 import { useSession } from '@/session/session-provider';
 
 export default function SignInScreen() {
@@ -17,6 +19,7 @@ export default function SignInScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const microsoft = microsoftSettings();
 
   const login = useMutation({
     mutationFn: authApi.login,
@@ -49,7 +52,7 @@ export default function SignInScreen() {
       <FormMessage message={error} />
       <TextField
         label="University email"
-        placeholder="you@asu.edu.jo"
+        placeholder="123456789@students.asu.edu.jo"
         value={email}
         onChangeText={setEmail}
         autoCapitalize="none"
@@ -67,6 +70,7 @@ export default function SignInScreen() {
         onSubmitEditing={submit}
       />
       <Button title="Sign in" onPress={submit} loading={login.isPending} />
+      {microsoft ? <MicrosoftButton settings={microsoft} onError={setError} /> : null}
       <Button
         title="Forgot your password?"
         variant="link"

@@ -2,16 +2,14 @@ import { Transform } from 'class-transformer';
 import {
   IsByteLength,
   IsEmail,
+  IsJWT,
   IsString,
   Length,
   Matches,
   MaxLength,
   MinLength,
 } from 'class-validator';
-import { trim } from '../../common/transforms.js';
-
-const normalizeEmail = ({ value }: { value: unknown }) =>
-  typeof value === 'string' ? value.trim().toLowerCase() : value;
+import { normalizeEmail, trim } from '../../common/transforms.js';
 
 const PASSWORD_MIN = 8;
 // bcrypt ignores everything after 72 bytes. Arabic letters take 2 bytes each.
@@ -81,4 +79,10 @@ export class AdminCodeDto {
 
   @Matches(/^\d{6}$/, { message: 'The code has 6 digits' })
   code: string;
+}
+
+export class MicrosoftLoginDto {
+  @IsJWT({ message: 'Microsoft sign-in failed. Try again.' })
+  @MaxLength(16384)
+  idToken: string;
 }

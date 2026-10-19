@@ -9,6 +9,12 @@ import { AdminAuthService } from './admin-auth.service.js';
 import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
 import { EmailCodesService } from './email-codes.service.js';
+import { EmailRule } from './email-domain.js';
+import { MicrosoftAuthService } from './microsoft-auth.service.js';
+import {
+  MicrosoftTokenVerifier,
+  microsoftKeysProvider,
+} from './microsoft-token.js';
 import { ACCESS_TOKEN_TTL_SECONDS, TokensService } from './tokens.service.js';
 
 const ISSUER = 'asu-lost-and-found';
@@ -31,7 +37,16 @@ const ISSUER = 'asu-lost-and-found';
     }),
   ],
   controllers: [AuthController, AdminAuthController],
-  providers: [AuthService, AdminAuthService, EmailCodesService, TokensService],
-  exports: [TokensService],
+  providers: [
+    AuthService,
+    AdminAuthService,
+    EmailCodesService,
+    EmailRule,
+    MicrosoftAuthService,
+    MicrosoftTokenVerifier,
+    microsoftKeysProvider,
+    TokensService,
+  ],
+  exports: [EmailCodesService, EmailRule, TokensService],
 })
 export class AuthModule {}
