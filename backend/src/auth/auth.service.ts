@@ -4,8 +4,6 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { EnvironmentVariables } from '../config/env.validation.js';
 import { Prisma, type User } from '../generated/prisma/client.js';
 import { OutboxService } from '../mail/outbox.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -27,7 +25,7 @@ import {
   ResetPasswordDto,
   VerifyEmailDto,
 } from './dto/auth.dto.js';
-import { isAllowedEmail, parseDomains } from './email-domain.js';
+import { EmailRule } from './email-domain.js';
 import { EmailCodesService } from './email-codes.service.js';
 import { hashPassword, verifyPassword } from './passwords.js';
 import { TokenPair, TokensService } from './tokens.service.js';
@@ -41,35 +39,21 @@ const invalidCode = () =>
 
 @Injectable()
 export class AuthService {
-  private readonly allowedDomains: string[];
-
   constructor(
-    config: ConfigService<EnvironmentVariables, true>,
+    private readonly emailRule: EmailRule,
     private readonly prisma: PrismaService,
     private readonly users: UsersService,
     private readonly codes: EmailCodesService,
     private readonly tokens: TokensService,
     private readonly outbox: OutboxService,
-  ) {
-    this.allowedDomains = parseDomains(
-      config.get('ALLOWED_EMAIL_DOMAINS', { infer: true }),
-    );
-  }
+  ) {}
 
   /**
    * Answers the same way whether or not the email is already taken, so the
    * sign-up form can't be used to find out who has an account.
    */
   async register(dto: RegisterDto): Promise<void> {
-    if (!isAllowedEmail(dto.email, this.allowedDomains)) {
-      const domains = this.allowedDomains
-        .map((domain) => `@${domain}`)
-        .join(' or ');
-      throw new BadRequestException({
-        message: `Sign up with your university email (${domains})`,
-        code: 'EMAIL_DOMAIN_NOT_ALLOWED',
-      });
-    }
+    this.emailRule.check(dto.email);
     const passwordHash = await hashPassword(dto.password);
 
     try {
@@ -157,12 +141,14 @@ export class AuthService {
         code: 'EMAIL_NOT_VERIFIED',
       });
     }
-    await this.checkNotBanned(user);
-    return { ...(await this.tokens.issue(user)), user: toProfile(user) };
+    return this.startSession(user);
   }
 
-  /** Only after the password matched, so it never tells a stranger about a ban. */
-  private async checkNotBanned(user: User): Promise<void> {
+  /**
+   * Only after the password or Microsoft vouched for the user, so it never
+   * tells a stranger about a ban.
+   */
+  async startSession(user: User): Promise<AuthResponse> {
     if (isBanned(user)) {
       throw new ForbiddenException({
         message: bannedMessage(user),
@@ -172,6 +158,7 @@ export class AuthService {
     if (banHasEnded(user)) {
       await this.prisma.$transaction((tx) => liftBan(tx, user.id));
     }
+    return { ...(await this.tokens.issue(user)), user: toProfile(user) };
   }
 
   async forgotPassword(email: string): Promise<void> {

@@ -4,11 +4,13 @@ import request from 'supertest';
 import { App } from 'supertest/types.js';
 import { AppModule } from '../../src/app.module.js';
 import { configureApp } from '../../src/app.setup.js';
+import { MICROSOFT_KEYS } from '../../src/auth/microsoft-token.js';
 import { MailSender } from '../../src/mail/mail-sender.js';
 import { OutboxService } from '../../src/mail/outbox.service.js';
 import { OutboxWorker } from '../../src/mail/outbox.worker.js';
 import { PrismaService } from '../../src/prisma/prisma.service.js';
 import { FakeMailSender } from './fake-mail-sender.js';
+import { microsoftKeys } from './microsoft.js';
 
 export interface TestContext {
   app: INestApplication<App>;
@@ -45,6 +47,8 @@ export async function createTestApp(): Promise<TestContext> {
     // Tests send queued emails themselves with outbox.processDue().
     .overrideProvider(OutboxWorker)
     .useValue({})
+    .overrideProvider(MICROSOFT_KEYS)
+    .useValue(microsoftKeys)
     .compile();
 
   const app = moduleRef.createNestApplication<INestApplication<App>>();

@@ -46,3 +46,17 @@ export function adminSignInEmail(to: string, code: string): MailMessage {
     ].join('\n'),
   };
 }
+
+export function microsoftLinkedEmail(to: string): MailMessage {
+  return {
+    to,
+    subject: 'Microsoft sign-in was added to your ASU Lost & Found account',
+    text: [
+      'Hi,',
+      '',
+      'You can now sign in to ASU Lost & Found with your university Microsoft account as well as with your password.',
+      '',
+      "If this wasn't you, someone has signed in to your university Microsoft account: tell the university IT department.",
+    ].join('\n'),
+  };
+}

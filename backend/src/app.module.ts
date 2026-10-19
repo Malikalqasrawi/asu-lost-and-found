@@ -4,6 +4,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { AuthModule } from './auth/auth.module.js';
+import { AccountModule } from './account/account.module.js';
 import { ClaimsModule } from './claims/claims.module.js';
 import { HandoversModule } from './handovers/handovers.module.js';
 import { MatchesModule } from './matches/matches.module.js';
@@ -44,6 +45,7 @@ import { UsersModule } from './users/users.module.js';
     PhotosModule,
     PostsModule,
     ClaimsModule,
+    AccountModule,
     HandoversModule,
     MatchesModule,
     ModerationModule,

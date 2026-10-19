@@ -11,6 +11,12 @@ import {
   validateSync,
 } from 'class-validator';
 
+const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// docker compose passes an unset variable as an empty string.
+const emptyAsMissing = ({ value }: { value: unknown }) =>
+  value === '' ? undefined : value;
+
 export class EnvironmentVariables {
   @Matches(/^postgres(ql)?:\/\/.+/, {
     message: 'DATABASE_URL must be a postgresql:// connection string',
@@ -33,10 +39,19 @@ export class EnvironmentVariables {
   @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' ? value.toLowerCase().replace(/\s+/g, '') : value,
   )
-  @Matches(/^[a-z0-9-]+(\.[a-z0-9-]+)+(,[a-z0-9-]+(\.[a-z0-9-]+)+)*$/, {
-    message: 'ALLOWED_EMAIL_DOMAINS must be a comma-separated list of domains',
+  @Matches(/^[a-z0-9-]+(\.[a-z0-9-]+)+$/, {
+    message: 'STUDENT_EMAIL_DOMAIN must be a domain like students.asu.edu.jo',
   })
-  ALLOWED_EMAIL_DOMAINS: string = 'asu.edu.jo';
+  STUDENT_EMAIL_DOMAIN: string = 'students.asu.edu.jo';
+
+  /** Staff (security office, admins) sign up with any address here; empty for none. */
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.toLowerCase().replace(/\s+/g, '') : value,
+  )
+  @Matches(/^([a-z0-9-]+(\.[a-z0-9-]+)+(,[a-z0-9-]+(\.[a-z0-9-]+)+)*)?$/, {
+    message: 'STAFF_EMAIL_DOMAINS must be a comma-separated list of domains',
+  })
+  STAFF_EMAIL_DOMAINS: string = 'asu.edu.jo';
 
   @IsString()
   MAIL_HOST: string = 'localhost';
@@ -78,6 +93,22 @@ export class EnvironmentVariables {
   @IsInt()
   @Min(1)
   RATE_LIMIT_UPLOADS_PER_MINUTE: number = 5;
+
+  /** The app registration in Microsoft Entra; Microsoft sign-in is off until both are set. */
+  @Transform(emptyAsMissing)
+  @IsOptional()
+  @Matches(GUID, {
+    message: 'MICROSOFT_CLIENT_ID must be the Application (client) ID, a GUID',
+  })
+  MICROSOFT_CLIENT_ID?: string;
+
+  /** The university's Microsoft tenant: only its accounts can sign in. */
+  @Transform(emptyAsMissing)
+  @IsOptional()
+  @Matches(GUID, {
+    message: 'MICROSOFT_TENANT_ID must be the Directory (tenant) ID, a GUID',
+  })
+  MICROSOFT_TENANT_ID?: string;
 
   /** The admin website, the only other site allowed to call the API from a browser. */
   @Matches(/^https?:\/\/[^/\s]+$/, {

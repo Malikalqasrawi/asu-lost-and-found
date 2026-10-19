@@ -44,6 +44,8 @@ describe('accounts', () => {
       'ahmad@gmail.com',
       'ahmad@evilasu.edu.jo',
       'ahmad@asu.edu.jo.evil.com',
+      'ahmad@students.asu.edu.jo',
+      '12345678@students.asu.edu.jo',
     ])('refuses %s', async (email) => {
       const response = await ctx
         .http()
@@ -52,6 +54,13 @@ describe('accounts', () => {
         .expect(400);
 
       expect(response.body.code).toBe('EMAIL_DOMAIN_NOT_ALLOWED');
+    });
+
+    it('accepts a student email made of the 9-digit student number', async () => {
+      const number = String(Date.now()).slice(-9);
+      const { email } = await register(ctx, `${number}@students.asu.edu.jo`);
+
+      expect(await emailedCode(ctx, email)).toMatch(/^\d{6}$/);
     });
 
     it('refuses a short password', async () => {

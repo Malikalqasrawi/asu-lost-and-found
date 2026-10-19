@@ -6,9 +6,11 @@ import { useEffect } from 'react';
 import { useColorScheme } from 'react-native';
 
 import { queryClient } from '@/api/query-client';
+import { loadAppearance } from '@/hooks/use-appearance';
 import { SessionProvider, useSession } from '@/session/session-provider';
 
 SplashScreen.preventAutoHideAsync();
+void loadAppearance();
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();

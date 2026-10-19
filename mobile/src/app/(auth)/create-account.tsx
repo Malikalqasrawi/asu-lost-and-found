@@ -73,7 +73,7 @@ export default function CreateAccountScreen() {
       />
       <TextField
         label="University email"
-        placeholder="you@asu.edu.jo"
+        placeholder="123456789@students.asu.edu.jo"
         value={email}
         onChangeText={setEmail}
         error={fieldErrors.email}

@@ -2,9 +2,11 @@ import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
 import { GuessesSecret, SendsEmail } from '../rate-limit/rate-limit.js';
 import { AuthResponse, AuthService } from './auth.service.js';
 import { Public } from './decorators.js';
+import { MicrosoftAuthService } from './microsoft-auth.service.js';
 import {
   EmailDto,
   LoginDto,
+  MicrosoftLoginDto,
   RefreshTokenDto,
   RegisterDto,
   ResetPasswordDto,
@@ -19,7 +21,10 @@ const CHECK_YOUR_EMAIL = {
 @Public()
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly auth: AuthService) {}
+  constructor(
+    private readonly auth: AuthService,
+    private readonly microsoft: MicrosoftAuthService,
+  ) {}
 
   @Post('register')
   @HttpCode(HttpStatus.ACCEPTED)
@@ -49,6 +54,19 @@ export class AuthController {
   @GuessesSecret()
   login(@Body() dto: LoginDto): Promise<AuthResponse> {
     return this.auth.login(dto);
+  }
+
+  @Post('microsoft/start')
+  @HttpCode(HttpStatus.OK)
+  microsoftStart(): Promise<{ nonce: string }> {
+    return this.microsoft.start();
+  }
+
+  @Post('microsoft')
+  @HttpCode(HttpStatus.OK)
+  @GuessesSecret()
+  microsoftLogin(@Body() dto: MicrosoftLoginDto): Promise<AuthResponse> {
+    return this.microsoft.signIn(dto);
   }
 
   @Post('refresh')

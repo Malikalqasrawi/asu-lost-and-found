@@ -332,6 +332,20 @@ describe('moderation', () => {
       expect(email?.text).toContain('Reason: Posting fake items');
     });
 
+    it('neither finds nor bans a deleted account', async () => {
+      await ctx
+        .http()
+        .delete('/api/users/me')
+        .set('Authorization', `Bearer ${author.token}`)
+        .send({ password: PASSWORD })
+        .expect(204);
+
+      const found = (await as(admin).get('/api/admin/users?q=Deleted'))
+        .body as StudentView[];
+      expect(found.map((one) => one.id)).not.toContain(author.id);
+      await ban(author, { reason: 'Posting fake items', days: 7 }).expect(404);
+    });
+
     it('keeps a post a moderator hid hidden after the ban ends', async () => {
       const item = await post(author);
       await ban(author, { reason: 'Spam' }).expect(200);

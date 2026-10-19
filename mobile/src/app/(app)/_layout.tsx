@@ -17,6 +17,14 @@ export default function AppLayout() {
       <Stack.Screen name="posts/[id]/chat" options={{ title: 'Messages' }} />
       <Stack.Screen name="report" options={{ title: 'Report', presentation: 'modal' }} />
       <Stack.Screen
+        name="account/change-email"
+        options={{ title: 'Change email', presentation: 'modal' }}
+      />
+      <Stack.Screen
+        name="account/delete"
+        options={{ title: 'Delete account', presentation: 'modal' }}
+      />
+      <Stack.Screen
         name="posts/[id]/pickup"
         options={{ title: 'Pickup code', presentation: 'modal' }}
       />

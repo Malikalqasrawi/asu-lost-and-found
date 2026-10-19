@@ -88,15 +88,28 @@ enum EmailCodePurpose {
   VERIFY_EMAIL
   RESET_PASSWORD
   ADMIN_SIGN_IN
+  /// Proves it is the student, for accounts that sign in with Microsoft only.
+  CONFIRM_ACCOUNT
+  /// Sent to the new address when a student changes their email.
+  CHANGE_EMAIL
 }
 
 model User {
   id               String    @id @default(uuid(7)) @db.Uuid
   email            String    @unique
   fullName         String    @map("full_name")
-  passwordHash     String    @map("password_hash")
+  /// Empty for accounts that only ever signed in with Microsoft.
+  passwordHash     String?   @map("password_hash")
   role             Role      @default(STUDENT)
   emailVerifiedAt  DateTime? @map("email_verified_at") @db.Timestamptz(3)
+  /// Waiting for the code sent to it before it replaces the email.
+  pendingEmail     String?   @map("pending_email")
+  /// The Microsoft account (tenant and object id) this account signs in with.
+  microsoftId      String?   @unique @map("microsoft_id")
+  /// Deleted by the student: personal data is gone, history stays without a name.
+  deletedAt        DateTime? @map("deleted_at") @db.Timestamptz(3)
+  /// Keyed hash of a deleted account's email, so the claim limit still knows the student.
+  erasedEmailHash  String?   @map("erased_email_hash")
   tokensValidAfter DateTime? @map("tokens_valid_after") @db.Timestamptz(3)
   /// When the student was last emailed about a possible match; one a day at most.
   matchEmailedAt   DateTime? @map("match_emailed_at") @db.Timestamptz(3)
@@ -121,6 +134,7 @@ model User {
   moderated     ModerationLog[] @relation("Moderator")
   moderatedOn   ModerationLog[] @relation("ModeratedStudent")
 
+  @@index([erasedEmailHash])
   @@map("users")
 }
 
@@ -138,6 +152,17 @@ model EmailCode {
 
   @@index([userId, purpose, createdAt])
   @@map("email_codes")
+}
+
+/// Handed to the app before Microsoft sign-in. The ID token must carry it, and it works once.
+model SignInNonce {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  nonceHash String   @unique @map("nonce_hash")
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([expiresAt])
+  @@map("sign_in_nonces")
 }
 
 model RefreshToken {

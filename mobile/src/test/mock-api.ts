@@ -10,6 +10,7 @@ export const authResponse = {
     email: 'ahmad@asu.edu.jo',
     fullName: 'Ahmad Saleh',
     role: 'STUDENT',
+    hasPassword: true,
     createdAt: '2026-10-16T10:00:00.000Z',
   },
 };

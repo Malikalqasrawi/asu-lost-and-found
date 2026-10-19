@@ -125,7 +125,11 @@ describe('signing in and out', () => {
     fetchMock = mockApi({
       'POST /auth/register': () => [
         400,
-        { message: 'Sign up with your university email (@asu.edu.jo)', code: 'EMAIL_DOMAIN_NOT_ALLOWED' },
+        {
+          message:
+            'Use your student email (your 9-digit student number@students.asu.edu.jo) or a staff email (@asu.edu.jo)',
+          code: 'EMAIL_DOMAIN_NOT_ALLOWED',
+        },
       ],
     });
     await renderRouter('./src/app');
@@ -137,7 +141,7 @@ describe('signing in and out', () => {
     await type('Password', 'correct-horse-42');
     await press('Create account');
 
-    expect(await screen.findByText('Sign up with your university email (@asu.edu.jo)')).toBeOnTheScreen();
+    expect(await screen.findByText(/Use your student email/)).toBeOnTheScreen();
   });
 
   it('resets a forgotten password', async () => {

@@ -17,9 +17,12 @@ export class FakeMailSender extends MailSender {
     return this.sent.filter((message) => message.to === email);
   }
 
+  /** From the newest email that has a code; others (a match, a notice) can arrive after it. */
   lastCodeFor(email: string): string {
-    const last = this.sentTo(email).at(-1);
-    const code = last?.text.match(/\b(\d{6})\b/)?.[1];
+    const codes = this.sentTo(email)
+      .map((message) => message.text.match(/\b(\d{6})\b/)?.[1])
+      .filter((code) => code !== undefined);
+    const code = codes.at(-1);
     if (!code) {
       throw new Error(`No code was emailed to ${email}`);
     }

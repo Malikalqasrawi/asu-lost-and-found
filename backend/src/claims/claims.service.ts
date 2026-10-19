@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '../generated/prisma/client.js';
 import { OutboxService } from '../mail/outbox.service.js';
-import { lockPost } from '../prisma/locks.js';
+import { lockPost, lockUser } from '../prisma/locks.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { startHandover } from '../handovers/handover-access.js';
 import { atDeskEmail } from '../handovers/handover-emails.js';
@@ -28,6 +28,7 @@ import {
   toMyClaimView,
 } from './claim-view.js';
 import { AnswerDto, CreateClaimDto } from './dto/claim.dto.js';
+import { ClaimLimit } from './claim-limit.js';
 import { SerialHasher } from './serial.js';
 
 /** Claims a student gets per item; rejected and withdrawn ones both count. */
@@ -76,13 +77,14 @@ export class ClaimsService {
     private readonly prisma: PrismaService,
     private readonly outbox: OutboxService,
     private readonly serials: SerialHasher,
+    private readonly limit: ClaimLimit,
   ) {}
 
   /** What a student needs to claim a found item, and their own claim if they have one. */
   async claimForm(postId: string, viewerId: string): Promise<ClaimForm> {
     const post = await this.claimablePost(postId, viewerId);
     const [used, active] = await Promise.all([
-      this.usedClaims(this.prisma, postId, viewerId),
+      this.limit.used(this.prisma, postId, viewerId),
       this.prisma.claim.findFirst({
         where: {
           postId,
@@ -180,7 +182,16 @@ export class ClaimsService {
     if (post.status !== 'OPEN') {
       throw new ConflictException('This item is no longer open for claims.');
     }
-    if ((await this.usedClaims(tx, postId, claimantId)) >= MAX_CLAIMS) {
+    // Waits for an account deletion under way, which withdraws the claims it can see.
+    await lockUser(tx, claimantId);
+    const claimant = await tx.user.findUniqueOrThrow({
+      where: { id: claimantId },
+      select: { deletedAt: true },
+    });
+    if (claimant.deletedAt) {
+      throw notFound();
+    }
+    if ((await this.limit.used(tx, postId, claimantId)) >= MAX_CLAIMS) {
       throw new ForbiddenException({
         message: `You have used all ${MAX_CLAIMS} claims for this item.`,
         code: 'CLAIM_LIMIT',
@@ -362,16 +373,6 @@ export class ClaimsService {
     for (const claim of waiting) {
       await this.outbox.enqueue(tx, email(claim.claimant.email, title));
     }
-  }
-
-  private usedClaims(
-    db: Prisma.TransactionClient,
-    postId: string,
-    claimantId: string,
-  ): Promise<number> {
-    return db.claim.count({
-      where: { postId, claimantId, status: { in: ['REJECTED', 'WITHDRAWN'] } },
-    });
   }
 
   /** Someone else's claim answers 404, the same as a claim that doesn't exist. */

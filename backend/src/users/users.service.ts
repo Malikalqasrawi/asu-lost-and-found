@@ -7,6 +7,8 @@ export interface UserProfile {
   email: string;
   fullName: string;
   role: Role;
+  /** False for accounts that only sign in with Microsoft. */
+  hasPassword: boolean;
   createdAt: Date;
 }
 
@@ -16,6 +18,7 @@ export function toProfile(user: User): UserProfile {
     email: user.email,
     fullName: user.fullName,
     role: user.role,
+    hasPassword: user.passwordHash !== null,
     createdAt: user.createdAt,
   };
 }

@@ -20,6 +20,7 @@ A mobile app that helps students at Applied Science Private University get lost 
 - [x] Handover: in-app messages, pickup code, security office desk
 - [x] Match suggestions between lost and found posts
 - [x] Moderation: reports, hidden posts, banned accounts, and an admin website
+- [x] Account settings: system, light or dark look, changing the email, deleting the account, and Microsoft sign-in with the university account
 
 ## Tech stack
 
@@ -39,7 +40,8 @@ asu-lost-and-found/
 ├── backend/                 NestJS API
 │   ├── prisma/              schema and SQL migrations
 │   ├── src/
-│   │   ├── auth/            sign-up, email codes, sign-in, tokens, guards
+│   │   ├── account/         changing the email, deleting the account
+│   │   ├── auth/            sign-up, email codes, sign-in (also with Microsoft), tokens, guards
 │   │   ├── claims/          ownership claims, answers, claim history
 │   │   ├── handovers/       messages, pickup codes, the security office desk
 │   │   ├── matches/         suggestions between lost and found posts
@@ -62,7 +64,8 @@ asu-lost-and-found/
 │       ├── api/             API client with automatic token refresh
 │       ├── app/             screens (Expo Router): sign-in screens, then Browse, My posts, My claims, Messages and Account tabs (and Desk for security staff)
 │       ├── components/      form fields, buttons, screen layout
-│       ├── session/         signed-in state and token storage
+│       ├── hooks/           theme colours, the system, light or dark choice, search delay
+│       ├── session/         signed-in state, token storage, Microsoft sign-in
 │       └── test/
 ├── docker/postgres/         database setup script
 ├── docker-compose.yml
@@ -117,7 +120,19 @@ npm install
 npm run android
 ```
 
-Create an account with an `@asu.edu.jo` address and read the code in Mailpit. The Android emulator reaches your computer at `10.0.2.2`; for a real phone, put your computer's network address in `mobile/.env` and set `APP_BIND=0.0.0.0` in the root `.env`.
+Create an account with a student email (the 9-digit student number, such as `123456789@students.asu.edu.jo`) or a staff `@asu.edu.jo` address, and read the code in Mailpit. The Android emulator reaches your computer at `10.0.2.2`; for a real phone, put your computer's network address in `mobile/.env` and set `APP_BIND=0.0.0.0` in the root `.env`.
+
+### Microsoft sign-in (optional)
+
+The "Continue with Microsoft" button appears once the app and the API know the university's Microsoft app registration. Students then sign in with their university email and password on Microsoft's own page; the app never sees the password.
+
+1. In the [Microsoft Entra admin center](https://entra.microsoft.com), open **Identity** > **Applications** > **App registrations** and click **New registration**.
+2. Name it `ASU Lost & Found`, choose **Accounts in this organizational directory only**, and click **Register**.
+3. Open **Authentication** > **Add a platform** > **Mobile and desktop applications**, enter the redirect URI `asulostfound://auth`, and click **Configure**.
+4. From **Overview**, copy the **Application (client) ID** and the **Directory (tenant) ID**.
+5. Put them in the root `.env` as `MICROSOFT_CLIENT_ID` and `MICROSOFT_TENANT_ID`, and in `mobile/.env` as `EXPO_PUBLIC_MICROSOFT_CLIENT_ID` and `EXPO_PUBLIC_MICROSOFT_TENANT_ID`, then run `docker compose up -d --build` again.
+
+Registering an app in the university's directory needs the university IT department's permission. Try it with a real university account first: the API refuses guests from other organisations, and a directory that signs its own members in through another identity provider could look like that. Expo Go can't receive `asulostfound://auth`, so try Microsoft sign-in in a development build (`npx expo run:android`).
 
 ### Running the API outside Docker
 
@@ -142,9 +157,15 @@ All routes start with `/api`. Everything except the ones marked public needs `Au
 | `POST /auth/login` | yes | Returns an access token (15 minutes) and a refresh token (30 days) |
 | `POST /auth/refresh` | yes | Swaps a refresh token for a new pair |
 | `POST /auth/logout` | yes | Ends the sign-in that the refresh token belongs to |
+| `POST /auth/microsoft/start` | yes | A one-time value for the app to send to Microsoft (works once, for 10 minutes) |
+| `POST /auth/microsoft` | yes | Signs in with the ID token Microsoft gave back; creates the account on the first sign-in |
 | `POST /auth/forgot-password` | yes | Emails a password reset code |
 | `POST /auth/reset-password` | yes | Sets a new password with the code and signs out every device |
 | `GET /users/me` | no | The signed-in user's profile |
+| `POST /users/me/confirmation-code` | no | Emails a 6-digit code that stands in for the password on accounts that sign in with Microsoft only |
+| `POST /users/me/email` | no | Start changing the email: the new address plus the password (or that code); emails a code to the new address if it is free |
+| `POST /users/me/email/confirm` | no | The code from the new address; moves the account and signs out other devices |
+| `DELETE /users/me` | no | Delete the account with the password (or the code): erases the name and email and keeps the history without them |
 | `GET /places` | no | Campus places to choose from |
 | `GET /posts` | no | Open posts, newest first; filters `type`, `category`, `placeId`, search `q`, paging with `cursor` and `limit` |
 | `GET /posts/mine` | no | The signed-in student's posts, closed ones included |
@@ -193,7 +214,7 @@ All routes start with `/api`. Everything except the ones marked public needs `Au
 | `npm test` | `backend/` | Unit tests |
 | `npm run test:e2e` | `backend/` | API tests against PostgreSQL 17 in Docker (Testcontainers) |
 | `npm run lint` / `npm run typecheck` | `backend/`, `mobile/`, `admin/` | oxlint or ESLint, TypeScript |
-| `npm test` | `mobile/` | Sign-in, posting, claim, handover, matching and reporting flows on the real screens, API client and token refresh |
+| `npm test` | `mobile/` | Sign-in (also with Microsoft), posting, claim, handover, matching, reporting and account settings flows on the real screens, API client and token refresh |
 | `npm test` | `admin/` | Admin website: sign-in in two steps, the report queue, bans and the claim history |
 
 GitHub Actions runs all of them on every pull request, plus a gitleaks secret scan and a Docker build that starts the whole stack and calls the health endpoint.
@@ -201,9 +222,12 @@ GitHub Actions runs all of them on every pull request, plus a gitleaks secret sc
 ## Security
 
 - Three database logins: the `postgres` superuser only creates the database, `lostfound` owns it and runs the migrations, and the API connects as `lostfound_app`, which can read and write rows but cannot create, change or drop tables. Neither of the last two is a superuser; integration tests check all of this.
-- Only university emails can sign up, and an account works only after the emailed 6-digit code is entered. Codes are stored hashed, expire after 15 minutes and allow 5 tries. Each account gets at most 5 codes and 15 wrong guesses a day, so asking for new codes doesn't give an attacker more tries.
+- Only university emails can sign up: students with their 9-digit student number at `students.asu.edu.jo`, staff at `asu.edu.jo` (both set in `.env`). An account works only after the emailed 6-digit code is entered. Codes are stored hashed, expire after 15 minutes and allow 5 tries. Each account gets at most 5 codes and 15 wrong guesses a day, so asking for new codes doesn't give an attacker more tries.
 - Verifying an email needs the password as well as the code, so nobody can sign up with someone else's email first and take the account over once the real owner verifies it.
 - Passwords hashed with bcrypt (cost 12). Sign-in gives the same answer for a wrong password and an unknown email, and takes the same time. Sign-up, resending a code and password reset give the same answer whether or not an email has an account. Emails never include text typed into the sign-up form, and names may only contain letters, spaces, apostrophes, dots and hyphens.
+- Microsoft sign-in uses the authorization code flow with PKCE in the system browser, so the app never sees the university password. The API checks the ID token itself: Microsoft's signature, that it was made for this app, that it belongs to a member of the university's tenant (guests from other organisations are refused), and that it carries a one-time value the API handed out a few minutes before. That value works once, so a copied ID token can't sign in again. The email still has to follow the student or staff rule. An account is linked by Microsoft's tenant and object ID, never by the email alone once it is linked, and the owner of an existing account gets an email when Microsoft is added to it. If an unconfirmed sign-up used the same email, it loses its password and name, since Microsoft has proved who owns the email. Accounts made with Microsoft have no password, and no password works for them.
+- Changing the email needs the password (or a code to the current email for Microsoft-only accounts) and then a code sent to the new address. The answer is the same whether or not the new address already has an account, and only a free address gets the code (a sign-up nobody confirmed doesn't count, and gives the address up). Asking again for a different address waits for a new code, also when two requests arrive at the same moment, so an old code can never confirm an address it wasn't sent to. Afterwards every other device is signed out, the old address gets a notice, and the Microsoft link is removed; the next Microsoft sign-in with the new address links it again.
+- Deleting an account needs the same proof. The name, email, password and Microsoft link are erased and the student is signed out everywhere; claims, reports and chats stay without a name. A database check makes sure a deleted account can't sign in. Instead of the email, the deleted account keeps a keyed hash of it (with `SERIAL_HASH_KEY`), so signing up again with the same email doesn't give new claims on an item. Banned accounts, admins and students in the middle of a handover can't delete their account; this is checked again with the account and its posts locked, so a claim accepted at the same moment can't slip through. Admins can't find or ban a deleted account.
 - Short-lived access tokens (JWT, HS256) and refresh tokens that work once: each refresh replaces the token, and reusing an old one ends that whole sign-in. Refresh tokens are stored hashed. Changing the password signs out every device and ends access tokens issued before it. In the app the refresh token lives in the device's secure storage.
 - Every route needs a signed-in user unless it is marked public, and the user is checked against the database on every request. Roles are checked by a guard; extra fields such as `role` in a sign-up request are refused.
 - Rate limits: 10 requests an hour that send an email (claims included) and 10 password or code attempts every 15 minutes per network address, and 5 posts with photos a minute per student (all set in `.env`). Once signed in, requests are counted per student, so students sharing the campus Wi-Fi don't use up each other's limit.
@@ -222,7 +246,7 @@ GitHub Actions runs all of them on every pull request, plus a gitleaks secret sc
 - A ban signs the student out everywhere, blocks sign-in until its end date (or for good), hides their open posts and closes their waiting claims. The student gets an email with the reason. Admin accounts can't be banned.
 - Hiding a post closes its waiting claims, and a moderator's hiding stays after a ban on the author ends. Every moderation decision is written to a log, with the admin who made it, in the same transaction as the decision.
 - Match suggestions are shown only to the author of the lost post, with the same blurred photos as Browse. The match email names only the student's own lost item. It goes out only when the titles themselves are alike, to at most 3 students per found item, and nobody gets more than one a day.
-- A student or an item that has claims can't be deleted, so the claim history and the 3-claims limit can't be reset. Closing a found item closes its waiting claims and emails those claimants.
+- The database never removes a student or an item that has claims, so the claim history and the 3-claims limit can't be reset. Closing a found item closes its waiting claims and emails those claimants.
 - Emails to a real mail server must use TLS; only the local Mailpit inbox is allowed plain SMTP.
 - Configuration comes from environment variables and is validated at startup. Secrets live only in git-ignored `.env` files; the repository has `.env.example` copies.
 - Security headers through Helmet, request bodies validated and stripped of unknown fields.
@@ -238,6 +262,7 @@ GitHub Actions runs all of them on every pull request, plus a gitleaks secret sc
 - Matching compares spelling, not meaning: "purse" and "wallet" don't count as similar titles, although the category, place and date still bring such items up.
 - The admin website's second step is a code sent to the admin's email, the same inbox that can reset the password, so someone who controls that inbox has both steps. An authenticator app for admins would close this.
 - A timed ban ends at the student's next sign-in after its end date; until then their posts stay hidden.
+- The claim limit links a deleted account to a new one by email only. Someone with two university addresses who moves an account from one to the other, before deleting it or after signing up again, starts with fresh claims. The same goes for a Microsoft student who moves the account to another address: their next Microsoft sign-in makes a second account.
 - An item left at the security office that nobody claims stays listed at the desk; there is no step yet to give it back to the finder or dispose of it.
 
 ## Author
