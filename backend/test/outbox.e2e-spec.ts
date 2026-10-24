@@ -121,18 +121,43 @@ describe('email outbox', () => {
     expect(await queuedFor(recent)).toHaveLength(1);
   });
 
+  it('sends due emails oldest first', async () => {
+    const emails = [newStudentEmail(), newStudentEmail(), newStudentEmail()];
+    for (const email of emails) {
+      await register(ctx, email);
+    }
+    // The last one registered is due first, so the order can't come from the table.
+    for (const [i, email] of emails.entries()) {
+      await ctx.prisma.outboxEmail.updateMany({
+        where: { toAddress: email },
+        data: { nextAttemptAt: new Date(Date.now() - (i + 1) * 60_000) },
+      });
+    }
+
+    await ctx.outbox.processDue();
+
+    const order = ctx.mailer.sent
+      .map((message) => message.to)
+      .filter((to) => emails.includes(to));
+    expect(order).toEqual(emails.toReversed());
+  });
+
   it('carries on when the email is cleaned up while it is being sent', async () => {
     const { email } = await register(ctx);
     const { email: next } = await register(ctx);
-    ctx.mailer.failuresLeft = 1;
-    ctx.mailer.whileSending = async () => {
+    ctx.mailer.whileSending = async (message) => {
+      if (message.to !== email) {
+        return;
+      }
       ctx.mailer.whileSending = undefined;
       await ctx.prisma.outboxEmail.deleteMany({ where: { toAddress: email } });
+      throw new Error('connect ECONNREFUSED 127.0.0.1:1025');
     };
 
     await ctx.outbox.processDue();
 
     expect(await queuedFor(email)).toHaveLength(0);
+    expect(ctx.mailer.sentTo(email)).toHaveLength(0);
     expect(ctx.mailer.sentTo(next)).toHaveLength(1);
   });
 });

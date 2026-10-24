@@ -4,10 +4,10 @@ export class FakeMailSender extends MailSender {
   readonly sent: MailMessage[] = [];
   failuresLeft = 0;
   /** Runs while an email is being sent, before it succeeds or fails. */
-  whileSending?: () => Promise<void>;
+  whileSending?: (message: MailMessage) => Promise<void>;
 
   async send(message: MailMessage): Promise<void> {
-    await this.whileSending?.();
+    await this.whileSending?.(message);
     if (this.failuresLeft > 0) {
       this.failuresLeft--;
       return Promise.reject(new Error('connect ECONNREFUSED 127.0.0.1:1025'));

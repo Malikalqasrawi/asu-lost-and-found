@@ -77,7 +77,13 @@ export class OutboxService {
         where: { id: { in: ids } },
         data: { nextAttemptAt: new Date(Date.now() + LEASE_MS) },
       });
-      return tx.outboxEmail.findMany({ where: { id: { in: ids } } });
+      const claimed = await tx.outboxEmail.findMany({
+        where: { id: { in: ids } },
+      });
+      // Sent in the order they became due, which the query above decided;
+      // findMany alone returns them in whatever order the table holds them.
+      const byId = new Map(claimed.map((email) => [email.id, email]));
+      return ids.flatMap((id) => byId.get(id) ?? []);
     });
   }
 
