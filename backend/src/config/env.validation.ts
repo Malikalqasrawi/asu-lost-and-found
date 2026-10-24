@@ -111,9 +111,10 @@ export class EnvironmentVariables {
   MICROSOFT_TENANT_ID?: string;
 
   /** The admin website, the only other site allowed to call the API from a browser. */
-  @Matches(/^https?:\/\/[^/\s]+$/, {
+  // Its refresh cookie is only marked Secure over HTTPS, so plain HTTP is for this machine only.
+  @Matches(/^(https:\/\/[^/\s]+|http:\/\/(localhost|127\.0\.0\.1)(:\d+)?)$/, {
     message:
-      'ADMIN_SITE_ORIGIN must be an origin like https://admin.example.com',
+      'ADMIN_SITE_ORIGIN must be an HTTPS origin like https://admin.example.com (plain http only for localhost)',
   })
   ADMIN_SITE_ORIGIN: string = 'http://localhost:4001';
 }

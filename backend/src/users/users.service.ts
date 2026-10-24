@@ -48,6 +48,23 @@ export class UsersService {
     if (!user) {
       throw new NotFoundException(`No account uses ${normalizeEmail(email)}`);
     }
-    return this.prisma.user.update({ where: { id: user.id }, data: { role } });
+    if (user.role === role) {
+      return user;
+    }
+    // A new role starts with a fresh sign-in, so a student made security staff
+    // can't keep using a session that never passed the desk's emailed code.
+    return this.prisma.$transaction(async (tx) => {
+      await tx.refreshToken.updateMany({
+        where: { userId: user.id, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+      return tx.user.update({
+        where: { id: user.id },
+        data: {
+          role,
+          tokensValidAfter: new Date(Math.floor(Date.now() / 1000) * 1000),
+        },
+      });
+    });
   }
 }

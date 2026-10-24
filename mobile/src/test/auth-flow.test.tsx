@@ -59,9 +59,43 @@ describe('signing in and out', () => {
     expect(await screen.findByText('Email or password is incorrect')).toBeOnTheScreen();
   });
 
+  it('asks security office accounts for the emailed code after the password', async () => {
+    const security = { ...authResponse, user: { ...authResponse.user, role: 'SECURITY' } };
+    fetchMock = mockApi({
+      'POST /auth/login': (body) =>
+        body.code === '482913'
+          ? [200, security]
+          : [403, { message: 'We emailed you a 6-digit code.', code: 'SIGN_IN_CODE_REQUIRED' }],
+      'GET /desk/items': () => [200, []],
+      ...emptyBrowse,
+    });
+    await renderRouter('./src/app');
+    await screen.findByRole('header', { name: 'Sign in' });
+
+    await type('University email', 'desk@asu.edu.jo');
+    await type('Password', 'correct-horse-42');
+    await press('Sign in');
+
+    expect(await screen.findByRole('header', { name: 'Enter your code' })).toBeOnTheScreen();
+    await type('Code', '482913');
+    await press('Sign in');
+
+    expect(await screen.findByText('Hi, Ahmad')).toBeOnTheScreen();
+    const sent = requestsTo(fetchMock, 'POST', '/auth/login').map(([, init]) =>
+      JSON.parse(init.body),
+    );
+    expect(sent).toEqual([
+      { email: 'desk@asu.edu.jo', password: 'correct-horse-42' },
+      { email: 'desk@asu.edu.jo', password: 'correct-horse-42', code: '482913' },
+    ]);
+  });
+
   it('sends an unverified student to the code screen and verifies them', async () => {
     fetchMock = mockApi({
-      'POST /auth/login': () => [403, { message: 'Verify your email first.', code: 'EMAIL_NOT_VERIFIED' }],
+      'POST /auth/login': () => [
+        403,
+        { message: 'Verify your email first.', code: 'EMAIL_NOT_VERIFIED' },
+      ],
       'POST /auth/resend-code': () => [202, { message: 'sent' }],
       'POST /auth/verify-email': () => [200, authResponse],
       ...emptyBrowse,
@@ -201,7 +235,9 @@ describe('signing in and out', () => {
     let ended = false;
     fetchMock = mockApi({
       'POST /auth/refresh': () =>
-        ended ? [401] : [200, { accessToken: 'access-2', refreshToken: 'refresh-2', expiresIn: 900 }],
+        ended
+          ? [401]
+          : [200, { accessToken: 'access-2', refreshToken: 'refresh-2', expiresIn: 900 }],
       'GET /users/me': () => [200, authResponse.user],
       'GET /posts': () => (ended ? [401] : [200, { items: [], nextCursor: null }]),
     });

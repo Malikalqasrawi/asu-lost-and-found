@@ -2,8 +2,6 @@
 
 A mobile app that helps students at Applied Science Private University get lost items back. Students post what they lost or found on campus, the app suggests matches between the two, and the real owner proves an item is theirs before it is handed over.
 
-> Work in progress. Accounts, posts with photos, ownership claims, the handover, match suggestions and moderation are done; final polish is next.
-
 ## How it works
 
 1. A student finds a black wallet near the library and posts it with a blurred photo and the place on campus.
@@ -11,16 +9,29 @@ A mobile app that helps students at Applied Science Private University get lost 
 3. The owner sees the post (or gets it suggested after posting their own "Lost" post) and answers the finder's questions.
 4. The finder accepts or rejects the claim. Valuable items go to the university security office, and the owner picks them up there with their student ID.
 
-## Planned features
+## Screenshots
 
-- [x] Project setup: API, database, mobile app, Docker, CI
-- [x] Accounts with university email only, email verification, roles (student, security office, admin)
-- [x] Lost and found posts with photos (blurred publicly, EXIF removed) and campus locations
-- [x] Ownership claims with private questions, limited attempts and claim history
-- [x] Handover: in-app messages, pickup code, security office desk
-- [x] Match suggestions between lost and found posts
-- [x] Moderation: reports, hidden posts, banned accounts, and an admin website
-- [x] Account settings: system, light or dark look, changing the email, deleting the account, and Microsoft sign-in with the university account
+From the app on Android and the admin website, with the demo data below.
+
+| | | |
+| :---: | :---: | :---: |
+| <img src="docs/screenshots/sign-in.png" width="250" alt="Sign in with a university email"> | <img src="docs/screenshots/browse.png" width="250" alt="Browse lost and found posts"> | <img src="docs/screenshots/post-details.png" width="250" alt="A found item with a blurred photo"> |
+| Sign in | Browse | A found item, photo blurred |
+| <img src="docs/screenshots/claim.png" width="250" alt="Claiming an item by answering the finder's questions"> | <img src="docs/screenshots/chat.png" width="250" alt="Chat between the finder and the owner"> | <img src="docs/screenshots/matches.png" width="250" alt="Possible matches for a lost item"> |
+| Claim with the finder's questions | Arranging the handover | Possible matches |
+| <img src="docs/screenshots/admin-reports.png" width="250" alt="Admin website: reports"> | <img src="docs/screenshots/admin-students.png" width="250" alt="Admin website: students"> | <img src="docs/screenshots/admin-activity.png" width="250" alt="Admin website: activity log"> |
+| Admin: reports | Admin: students and bans | Admin: activity log |
+
+## Features
+
+- Project setup: API, database, mobile app, Docker, CI
+- Accounts with university email only, email verification, roles (student, security office, admin)
+- Lost and found posts with photos (blurred publicly, EXIF removed) and campus locations
+- Ownership claims with private questions, limited attempts and claim history
+- Handover: in-app messages, pickup code, security office desk
+- Match suggestions between lost and found posts
+- Moderation: reports, hidden posts, banned accounts, and an admin website
+- Account settings: system, light or dark look, changing the email, deleting the account, and Microsoft sign-in with the university account
 
 ## Tech stack
 
@@ -46,7 +57,7 @@ asu-lost-and-found/
 │   │   ├── handovers/       messages, pickup codes, the security office desk
 │   │   ├── matches/         suggestions between lost and found posts
 │   │   ├── moderation/      reports, hidden posts and messages, bans
-│   │   ├── cli/             set-role command
+│   │   ├── cli/             set-role and demo data commands
 │   │   ├── config/          environment validation
 │   │   ├── health/          GET /api/health
 │   │   ├── mail/            email outbox and SMTP sender
@@ -68,6 +79,7 @@ asu-lost-and-found/
 │       ├── session/         signed-in state, token storage, Microsoft sign-in
 │       └── test/
 ├── docker/postgres/         database setup script
+├── docs/screenshots/        README screenshots
 ├── docker-compose.yml
 └── .github/workflows/ci.yml
 ```
@@ -89,6 +101,16 @@ docker compose up -d --build
 ```
 
 The API answers at http://localhost:4000/api/health with `{"status":"ok","database":"up"}`. Emails (verification and password reset codes) go to the Mailpit inbox at http://localhost:8027 until you point the `MAIL_*` settings at a real SMTP server.
+
+### Demo data
+
+On an empty local database, one command creates demo students, a security office account and an admin, posts with drawn item photos, a claim with a chat, a match, an item at the security desk, reports and a ban. Set `DEMO_PASSWORD` in `.env` first (at least 16 characters; every demo account uses it), then:
+
+```bash
+docker compose --profile demo run --rm seed
+```
+
+The demo accounts use made-up `example.edu` addresses, and the command refuses to run when the database already has accounts or when email goes anywhere but Mailpit. Only this one-off `seed` service gets `DEMO_PASSWORD`; the API never sees it. To start over, `docker compose down -v` deletes the local database and photos.
 
 ### Making the first admin
 
@@ -154,7 +176,7 @@ All routes start with `/api`. Everything except the ones marked public needs `Au
 | `POST /auth/register` | yes | Create an account with a university email; emails a 6-digit code |
 | `POST /auth/resend-code` | yes | Send a new verification code (at most one a minute) |
 | `POST /auth/verify-email` | yes | Email, password and code; verifies the email and signs in |
-| `POST /auth/login` | yes | Returns an access token (15 minutes) and a refresh token (30 days) |
+| `POST /auth/login` | yes | Returns an access token (15 minutes) and a refresh token (30 days). Security office accounts first get a 6-digit code by email and send it with the password |
 | `POST /auth/refresh` | yes | Swaps a refresh token for a new pair |
 | `POST /auth/logout` | yes | Ends the sign-in that the refresh token belongs to |
 | `POST /auth/microsoft/start` | yes | A one-time value for the app to send to Microsoft (works once, for 10 minutes) |
@@ -222,7 +244,7 @@ GitHub Actions runs all of them on every pull request, plus a gitleaks secret sc
 ## Security
 
 - Three database logins: the `postgres` superuser only creates the database, `lostfound` owns it and runs the migrations, and the API connects as `lostfound_app`, which can read and write rows but cannot create, change or drop tables. Neither of the last two is a superuser; integration tests check all of this.
-- Only university emails can sign up: students with their 9-digit student number at `students.asu.edu.jo`, staff at `asu.edu.jo` (both set in `.env`). An account works only after the emailed 6-digit code is entered. Codes are stored hashed, expire after 15 minutes and allow 5 tries. Each account gets at most 5 codes and 15 wrong guesses a day, so asking for new codes doesn't give an attacker more tries.
+- Only university emails can sign up: students with their 9-digit student number at `students.asu.edu.jo`, staff at `asu.edu.jo` (both set in `.env`). An account works only after the emailed 6-digit code is entered. Codes are stored as a keyed hash (HMAC), so a copy of the table can't be turned back into codes, expire after 15 minutes and allow 5 tries. Each account gets at most 5 codes and 15 wrong guesses a day, so asking for new codes doesn't give an attacker more tries.
 - Verifying an email needs the password as well as the code, so nobody can sign up with someone else's email first and take the account over once the real owner verifies it.
 - Passwords hashed with bcrypt (cost 12). Sign-in gives the same answer for a wrong password and an unknown email, and takes the same time. Sign-up, resending a code and password reset give the same answer whether or not an email has an account. Emails never include text typed into the sign-up form, and names may only contain letters, spaces, apostrophes, dots and hyphens.
 - Microsoft sign-in uses the authorization code flow with PKCE in the system browser, so the app never sees the university password. The API checks the ID token itself: Microsoft's signature, that it was made for this app, that it belongs to a member of the university's tenant (guests from other organisations are refused), and that it carries a one-time value the API handed out a few minutes before. That value works once, so a copied ID token can't sign in again. The email still has to follow the student or staff rule. An account is linked by Microsoft's tenant and object ID, never by the email alone once it is linked, and the owner of an existing account gets an email when Microsoft is added to it. If an unconfirmed sign-up used the same email, it loses its password and name, since Microsoft has proved who owns the email. Accounts made with Microsoft have no password, and no password works for them.
@@ -230,8 +252,8 @@ GitHub Actions runs all of them on every pull request, plus a gitleaks secret sc
 - Deleting an account needs the same proof. The name, email, password and Microsoft link are erased and the student is signed out everywhere; claims, reports and chats stay without a name. A database check makes sure a deleted account can't sign in. Instead of the email, the deleted account keeps a keyed hash of it (with `SERIAL_HASH_KEY`), so signing up again with the same email doesn't give new claims on an item. Banned accounts, admins and students in the middle of a handover can't delete their account; this is checked again with the account and its posts locked, so a claim accepted at the same moment can't slip through. Admins can't find or ban a deleted account.
 - Short-lived access tokens (JWT, HS256) and refresh tokens that work once: each refresh replaces the token, and reusing an old one ends that whole sign-in. Refresh tokens are stored hashed. Changing the password signs out every device and ends access tokens issued before it. In the app the refresh token lives in the device's secure storage.
 - Every route needs a signed-in user unless it is marked public, and the user is checked against the database on every request. Roles are checked by a guard; extra fields such as `role` in a sign-up request are refused.
-- Rate limits: 10 requests an hour that send an email (claims included) and 10 password or code attempts every 15 minutes per network address, and 5 posts with photos a minute per student (all set in `.env`). Once signed in, requests are counted per student, so students sharing the campus Wi-Fi don't use up each other's limit.
-- Emails go through an outbox table in the same transaction as the change that triggers them, and are retried with backoff if the mail server is down.
+- Rate limits: 10 requests an hour that send an email (claims included) and 10 password or code attempts every 15 minutes per account, and 5 posts with photos a minute per student (all set in `.env`). Before sign-in an account is the email the request names, so guessing one student's password from many addresses still stops at 10; one network address gets ten times as much, so a whole campus behind one address keeps working. Once signed in, requests are counted per student. Starting a Microsoft sign-in is limited to 20 a minute per address.
+- Emails go through an outbox table in the same transaction as the change that triggers them, and are retried with backoff if the mail server is down. An email with a code is dropped once the code expires, emails that failed are deleted after a week, and deleting an account removes everything still queued for its address.
 - Photos: every upload is decoded and saved again as a new JPEG, so only real JPEG, PNG or WebP images are accepted and all EXIF data (GPS position, phone model) is removed. At most 4 photos of 8 MB each per post, and 10 posts a day per student, also when many arrive at the same moment.
 - Uploads can't overload the server: each photo's header is checked before it is decoded (at most 25 megapixels, no 16-bit or animated images), photos are processed one at a time with at most two jobs running across the whole server, and the backend container has a memory limit. The app shrinks photos on the phone before uploading them.
 - Found items are shown blurred to everyone except the student who posted them, so only the real owner can describe the details. Originals are only ever sent to the poster and, once a claim is accepted, to that claimant. Photos are fetched by id through the API after the sign-in check; file names on disk are random and never leave the server.
@@ -239,7 +261,7 @@ GitHub Actions runs all of them on every pull request, plus a gitleaks secret sc
 - Claims: claimers answer the finder's questions without seeing the private notes, and only the finder sees the answers next to the notes. Someone else's claim answers 404. A student gets 3 claims per item, and a withdrawn claim counts like a rejected one, so withdrawing and claiming again can't flood the finder with emails. Withdrawn claims disappear from the finder's list. New claims and decisions on one item wait for each other, and the database allows one waiting claim per student per item and one accepted claim per item, so two accepts at the same moment can't both win. Claim emails never include the answers or the notes.
 - Serial numbers and IMEIs are never stored as typed: the server keeps an HMAC-SHA256 fingerprint made with a secret key from `.env` (`SERIAL_HASH_KEY`), so a copy of the database alone can't be used to work them out. It compares that with the claimer's number, and only the finder learns whether it matched.
 - Handover: only the finder and the student whose claim was accepted can read the chat or the handover; anyone else gets 404. The pickup code is shown only to the owner, and only the person holding the item can type it: the finder, or security staff once the item is at the desk (never for their own item). 5 wrong codes lock it until the owner asks for a new one, even when guesses arrive at the same moment, and code attempts count toward the password and code rate limit. Message emails never include the text and go out at most once an hour per chat, only to someone who hasn't had it open for 5 minutes and has opened it since the last email.
-- The security office sees the finder's name and email, the owner's full name once it has the item (to check the student ID at pickup), and the original photos of items it is handling. Only accounts with the security role can open the desk.
+- The security office sees the finder's name and email, the owner's full name once it has the item (to check the student ID at pickup), and the original photos of items it is handling. Only accounts with the security role can open the desk, and they sign in with the password and then a code sent by email (or through Microsoft). Giving an account a new role signs it out everywhere, so a student made security staff starts with that two-step sign-in. Security accounts can't claim items, since they see desk items unblurred.
 - Admin website: the password and then a code sent by email. Admin endpoints only accept tokens from that sign-in, so an admin's password alone, typed into the app, can't moderate. The refresh token lives in an httpOnly, SameSite=Strict cookie scoped to the sign-in endpoints, and refreshing also needs the admin site's origin and a custom header. CORS allows the admin website only. The cookie lasts until the browser closes, and an admin session ends 12 hours after sign-in however often it refreshes, or as soon as the account stops being an admin.
 - The admin website is served by nginx running as a non-root user, with a Content-Security-Policy that allows scripts only from the site itself and network calls only to the API.
 - Reports: a student can report a post they can see, or a message sent to them, once each, and 20 reports an hour. Admins see only the reported message, never the rest of the chat.
@@ -249,8 +271,12 @@ GitHub Actions runs all of them on every pull request, plus a gitleaks secret sc
 - The database never removes a student or an item that has claims, so the claim history and the 3-claims limit can't be reset. Closing a found item closes its waiting claims and emails those claimants.
 - Emails to a real mail server must use TLS; only the local Mailpit inbox is allowed plain SMTP.
 - Configuration comes from environment variables and is validated at startup. Secrets live only in git-ignored `.env` files; the repository has `.env.example` copies.
+- Post titles can't contain web or email addresses, because emails to other students quote them.
+- The admin website must be on HTTPS unless it runs on this machine, so its refresh cookie is always marked Secure. A release build of the app refuses an API address that isn't `https://`.
+- The demo data command runs only as a one-off `seed` service, on an empty database whose email goes to Mailpit; the running API never gets `DEMO_PASSWORD`, and the demo accounts use made-up `example.edu` addresses.
 - Security headers through Helmet, request bodies validated and stripped of unknown fields.
 - The database and API ports listen on this machine only unless `APP_BIND` says otherwise.
+- Docker base images are pinned by digest, and CI checks out code without keeping its GitHub token on disk.
 - The Docker images run as a non-root user, and the API image holds only production packages (no Prisma CLI or TypeScript).
 
 ## Known limits

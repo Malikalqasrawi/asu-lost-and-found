@@ -136,6 +136,14 @@ describe('posts and photos', () => {
       ],
       ['a title with a NUL character', { title: 'Black\u0000wallet' }],
       ['a title on two lines', { title: 'Black\nwallet' }],
+      [
+        'a title with a web address',
+        { title: 'Verify at asu-portal-login.example to collect' },
+      ],
+      [
+        'a title with an email address',
+        { title: 'Keys, write to me@mail.example' },
+      ],
       ['a description over 1000 characters', { description: 'é'.repeat(1001) }],
     ])('refuses %s', async (_name, fields) => {
       await newPost(finder, fields).expect(400);

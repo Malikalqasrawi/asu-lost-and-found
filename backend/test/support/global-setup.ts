@@ -47,7 +47,9 @@ export async function setup(project: TestProject): Promise<void> {
   const ownerPassword = randomUUID();
   const appPassword = randomUUID();
 
-  container = await new PostgreSqlContainer('postgres:17-alpine')
+  container = await new PostgreSqlContainer(
+    'postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24',
+  )
     .withDatabase('lostfound')
     .withUsername('postgres')
     .withPassword(randomUUID())

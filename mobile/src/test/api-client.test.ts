@@ -85,6 +85,20 @@ describe('apiRequest', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it('refuses plain HTTP in a release build', async () => {
+    const runtime = globalThis as unknown as { __DEV__: boolean };
+    const dev = runtime.__DEV__;
+    runtime.__DEV__ = false;
+    fetchMock = mockApi({});
+
+    try {
+      await expect(apiRequest('GET', '/health')).rejects.toThrow(/https:\/\//);
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      runtime.__DEV__ = dev;
+    }
+  });
+
   it('sends the access token only on requests that need it', async () => {
     await saveTokens({ accessToken: 'access-1', refreshToken: 'refresh-1', expiresIn: 900 });
     fetchMock = mockApi({

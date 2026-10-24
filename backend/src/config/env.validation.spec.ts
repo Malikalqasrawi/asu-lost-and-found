@@ -113,4 +113,23 @@ describe('validateEnv', () => {
       validateEnv({ ...required, MICROSOFT_TENANT_ID: 'asu.edu.jo' }),
     ).toThrow(/MICROSOFT_TENANT_ID must be the Directory \(tenant\) ID/);
   });
+
+  it('needs HTTPS for an admin website that is not on this machine', () => {
+    expect(() =>
+      validateEnv({
+        ...required,
+        ADMIN_SITE_ORIGIN: 'http://admin.example.com',
+      }),
+    ).toThrow(/ADMIN_SITE_ORIGIN must be an HTTPS origin/);
+    expect(
+      validateEnv({
+        ...required,
+        ADMIN_SITE_ORIGIN: 'https://admin.example.com',
+      }).ADMIN_SITE_ORIGIN,
+    ).toBe('https://admin.example.com');
+    expect(
+      validateEnv({ ...required, ADMIN_SITE_ORIGIN: 'http://127.0.0.1:4001' })
+        .ADMIN_SITE_ORIGIN,
+    ).toBe('http://127.0.0.1:4001');
+  });
 });

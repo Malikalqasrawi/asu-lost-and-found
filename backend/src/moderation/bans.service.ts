@@ -86,7 +86,12 @@ export class BansService {
           bannedUntil: until,
           banReason: dto.reason,
           tokensValidAfter: thisSecond(),
+          // A half-finished email change must not be confirmed once the ban ends.
+          pendingEmail: null,
         },
+      });
+      await tx.emailCode.deleteMany({
+        where: { userId: user.id, purpose: 'CHANGE_EMAIL' },
       });
       await this.closeEverything(tx, user.id, now);
       await logAction(tx, adminId, 'BAN', { studentId: user.id }, dto.reason);

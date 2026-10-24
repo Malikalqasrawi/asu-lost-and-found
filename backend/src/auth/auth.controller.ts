@@ -1,4 +1,6 @@
 import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
+import { MINUTE } from '../common/time.js';
 import { GuessesSecret, SendsEmail } from '../rate-limit/rate-limit.js';
 import { AuthResponse, AuthService } from './auth.service.js';
 import { Public } from './decorators.js';
@@ -58,6 +60,8 @@ export class AuthController {
 
   @Post('microsoft/start')
   @HttpCode(HttpStatus.OK)
+  // Public and writes a row each time, so it gets less than the usual 120 a minute.
+  @Throttle({ default: { limit: 20, ttl: MINUTE } })
   microsoftStart(): Promise<{ nonce: string }> {
     return this.microsoft.start();
   }

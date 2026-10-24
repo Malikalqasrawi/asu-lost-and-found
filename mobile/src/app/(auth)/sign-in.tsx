@@ -25,6 +25,11 @@ export default function SignInScreen() {
     mutationFn: authApi.login,
     onSuccess: signIn,
     onError: async (failure, credentials) => {
+      if (isApiError(failure, 'SIGN_IN_CODE_REQUIRED')) {
+        setPending(credentials);
+        router.push('/sign-in-code');
+        return;
+      }
       if (isApiError(failure, 'EMAIL_NOT_VERIFIED')) {
         setPending(credentials);
         await authApi.resendCode(credentials.email).catch(() => undefined);

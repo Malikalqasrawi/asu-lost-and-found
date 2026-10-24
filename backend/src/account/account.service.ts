@@ -7,7 +7,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { EmailCodesService } from '../auth/email-codes.service.js';
+import { codeExpiry, EmailCodesService } from '../auth/email-codes.service.js';
 import { EmailRule } from '../auth/email-domain.js';
 import { verifyPassword } from '../auth/passwords.js';
 import { TokensService } from '../auth/tokens.service.js';
@@ -62,7 +62,9 @@ export class AccountService {
     await this.prisma.$transaction(async (tx) => {
       const code = await this.codes.issue(tx, user.id, 'CONFIRM_ACCOUNT');
       if (code) {
-        await this.outbox.enqueue(tx, confirmationCodeEmail(user.email, code));
+        await this.outbox.enqueue(tx, confirmationCodeEmail(user.email, code), {
+          expiresAt: codeExpiry(),
+        });
       }
     });
   }
@@ -97,7 +99,9 @@ export class AccountService {
         where: { email: dto.newEmail, emailVerifiedAt: { not: null } },
       });
       if (!taken) {
-        await this.outbox.enqueue(tx, newEmailCodeEmail(dto.newEmail, code));
+        await this.outbox.enqueue(tx, newEmailCodeEmail(dto.newEmail, code), {
+          expiresAt: codeExpiry(),
+        });
       }
     });
   }
@@ -188,6 +192,13 @@ export class AccountService {
         data: { revokedAt: new Date() },
       });
       await tx.emailCode.deleteMany({ where: { userId: user.id } });
+      // Nothing waiting to be sent may keep the address after the account is gone.
+      const addresses = [user.email, user.pendingEmail].filter(
+        (address): address is string => Boolean(address),
+      );
+      await tx.outboxEmail.deleteMany({
+        where: { toAddress: { in: addresses } },
+      });
       await this.outbox.enqueue(tx, accountDeletedEmail(user.email));
       await tx.user.update({
         where: { id: user.id },

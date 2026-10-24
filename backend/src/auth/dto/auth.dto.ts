@@ -3,6 +3,7 @@ import {
   IsByteLength,
   IsEmail,
   IsJWT,
+  IsOptional,
   IsString,
   Length,
   Matches,
@@ -43,13 +44,20 @@ export class RegisterDto extends EmailDto {
   password: string;
 }
 
-export class LoginDto extends EmailDto {
+export class CredentialsDto extends EmailDto {
   @IsString()
   @IsByteLength(0, PASSWORD_MAX_BYTES, tooLong)
   password: string;
 }
 
-export class VerifyEmailDto extends LoginDto {
+export class LoginDto extends CredentialsDto {
+  /** Security office accounts: the code emailed after the password. */
+  @IsOptional()
+  @Matches(/^\d{6}$/, { message: 'The code has 6 digits' })
+  code?: string;
+}
+
+export class VerifyEmailDto extends CredentialsDto {
   @Matches(/^\d{6}$/, { message: 'The code has 6 digits' })
   code: string;
 }

@@ -38,6 +38,10 @@ function baseUrl(): string {
   if (!url) {
     throw new Error('EXPO_PUBLIC_API_URL is not set. Copy mobile/.env.example to mobile/.env.');
   }
+  // Tokens and passwords travel in these requests, so plain HTTP is for development only.
+  if (!__DEV__ && !url.startsWith('https://')) {
+    throw new Error('A release build needs an https:// EXPO_PUBLIC_API_URL.');
+  }
   return url.replace(/\/+$/, '');
 }
 

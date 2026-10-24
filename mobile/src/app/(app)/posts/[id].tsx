@@ -17,6 +17,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useSession } from '@/session/session-provider';
 
 export default function PostScreen() {
   const theme = useTheme();
@@ -37,7 +38,9 @@ export default function PostScreen() {
 
   const item = post.data;
   return (
-    <ScrollView style={{ backgroundColor: theme.background }} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={{ backgroundColor: theme.background }}
+      contentContainerStyle={styles.content}>
       {item.hidden ? (
         <FormMessage message="A moderator hid this post. Other students can't see it." />
       ) : null}
@@ -61,8 +64,13 @@ export default function PostScreen() {
 }
 
 function PostActions({ post }: { post: Post }) {
+  const { user } = useSession();
   if (post.isMine) {
     return <OwnerActions post={post} />;
+  }
+  // The security office sees desk items unblurred, so its accounts never claim.
+  if (post.type === 'FOUND' && user?.role === 'SECURITY') {
+    return null;
   }
   if (post.type === 'FOUND' && post.status !== 'CLOSED') {
     return <ClaimActions post={post} />;
@@ -81,10 +89,14 @@ function ClosePostButton({ post }: { post: Post }) {
   }
 
   function confirmClose() {
-    Alert.alert('Close this post?', 'It disappears from Browse. You can still see it in My posts.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Close post', style: 'destructive', onPress: () => closePost.mutate(post.id) },
-    ]);
+    Alert.alert(
+      'Close this post?',
+      'It disappears from Browse. You can still see it in My posts.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Close post', style: 'destructive', onPress: () => closePost.mutate(post.id) },
+      ],
+    );
   }
 
   return (

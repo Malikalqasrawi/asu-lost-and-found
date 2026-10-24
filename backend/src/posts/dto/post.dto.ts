@@ -22,12 +22,20 @@ import { Category, PostType } from '../../generated/prisma/client.js';
 import { CURSOR } from '../cursor.js';
 
 // One set of rules per field, shared by creating and editing a post.
+// Titles go into emails to other students, so they can't carry a link to a
+// look-alike sign-in page or an address to write to.
+const ADDRESS_IN_TEXT =
+  /:\/\/|www\.|@|[\p{L}\p{N}-]+\.(com|net|org|info|io|me|co|jo|edu|gov|app|site|online|link|xyz|ly|example)\b/iu;
+
 const Title = () =>
   applyDecorators(
     Transform(trim),
     IsString(),
     TextLength(3, 80, {
       message: 'The title must be 3 to 80 characters on one line',
+    }),
+    Matches(new RegExp(`^(?!.*(?:${ADDRESS_IN_TEXT.source}))`, 'isu'), {
+      message: 'Leave web and email addresses out of the title',
     }),
   );
 const Description = () =>

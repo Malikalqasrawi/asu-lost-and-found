@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { JwtService } from '@nestjs/jwt';
 import type { AuthResponse } from '../src/auth/auth.service.js';
 import { UsersService } from '../src/users/users.service.js';
@@ -7,6 +8,7 @@ import {
   newStudentEmail,
   PASSWORD,
   register,
+  signInAsSecurity,
 } from './support/accounts.js';
 import { createTestApp, TestContext } from './support/app.js';
 
@@ -54,6 +56,19 @@ describe('accounts', () => {
         .expect(400);
 
       expect(response.body.code).toBe('EMAIL_DOMAIN_NOT_ALLOWED');
+    });
+
+    it('stores the code with a keyed hash that the code alone cannot reproduce', async () => {
+      const { email } = await register(ctx);
+      const code = await emailedCode(ctx, email);
+      const stored = await ctx.prisma.emailCode.findFirstOrThrow({
+        where: { user: { email } },
+      });
+
+      expect(stored.codeHash).not.toBe(
+        createHash('sha256').update(code).digest('hex'),
+      );
+      expect(stored.codeHash).not.toContain(code);
     });
 
     it('accepts a student email made of the 9-digit student number', async () => {
@@ -422,17 +437,62 @@ describe('accounts', () => {
         .expect(401);
     });
 
-    it('shows a role given with the set-role command', async () => {
+    it('signs the account out when the set-role command gives it a new role', async () => {
       const { email, auth } = await createVerifiedUser(ctx);
+      const jwt = ctx.app.get(JwtService, { strict: false });
+      const earlier = await jwt.signAsync({
+        sub: auth.user.id,
+        role: 'STUDENT',
+        iat: Math.floor(Date.now() / 1000) - 60,
+      });
       await ctx.app.get(UsersService).setRole(email, 'SECURITY');
 
-      const response = await ctx
+      await ctx
         .http()
         .get('/api/users/me')
-        .set('Authorization', `Bearer ${auth.accessToken}`)
-        .expect(200);
+        .set('Authorization', `Bearer ${earlier}`)
+        .expect(401);
+      await ctx
+        .http()
+        .post('/api/auth/refresh')
+        .send({ refreshToken: auth.refreshToken })
+        .expect(401);
+      const again = await signInAsSecurity(ctx, email);
+      expect(again.user.role).toBe('SECURITY');
+    });
 
-      expect(response.body.role).toBe('SECURITY');
+    it('asks security staff for an emailed code after the password', async () => {
+      const { email } = await createVerifiedUser(ctx);
+      await ctx.app.get(UsersService).setRole(email, 'SECURITY');
+
+      const first = await ctx
+        .http()
+        .post('/api/auth/login')
+        .send({ email, password: PASSWORD })
+        .expect(403);
+      expect(first.body).toMatchObject({ code: 'SIGN_IN_CODE_REQUIRED' });
+      expect(first.body.accessToken).toBeUndefined();
+      const code = await emailedCode(ctx, email);
+
+      await ctx
+        .http()
+        .post('/api/auth/login')
+        .send({
+          email,
+          password: PASSWORD,
+          code: code === '000000' ? '111111' : '000000',
+        })
+        .expect(400);
+      await ctx
+        .http()
+        .post('/api/auth/login')
+        .send({ email, password: 'not-my-password', code })
+        .expect(401);
+      await ctx
+        .http()
+        .post('/api/auth/login')
+        .send({ email, password: PASSWORD, code })
+        .expect(200);
     });
   });
 

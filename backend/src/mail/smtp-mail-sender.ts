@@ -6,7 +6,7 @@ import { MailMessage, MailSender } from './mail-sender.js';
 
 // Mailpit on this machine speaks plain SMTP. Any other server must upgrade to TLS,
 // so nobody on the way can strip it and read the password or the codes.
-const LOCAL_MAIL_HOSTS = ['localhost', '127.0.0.1', 'mailpit'];
+export const LOCAL_MAIL_HOSTS = ['localhost', '127.0.0.1', 'mailpit'];
 
 export function requiresStartTls(host: string, secure: boolean): boolean {
   return !secure && !LOCAL_MAIL_HOSTS.includes(host.toLowerCase());
