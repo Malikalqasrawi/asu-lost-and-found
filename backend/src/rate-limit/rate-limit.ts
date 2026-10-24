@@ -49,6 +49,59 @@ export class StudentThrottlerGuard extends ThrottlerGuard {
   }
 }
 
+/**
+ * The account a request is about: the signed-in student, or the email it
+ * names before sign-in. Guessing one student's password from many addresses
+ * still hits this counter.
+ */
+function accountTracker(request: Record<string, unknown>): string {
+  const user = request.user as AuthUser | undefined;
+  if (user) {
+    return `student:${user.id}`;
+  }
+  const body = request.body as { email?: unknown } | undefined;
+  const email =
+    typeof body?.email === 'string' ? body.email.trim().toLowerCase() : '';
+  return email ? `email:${email}` : `ip:${String(request.ip)}`;
+}
+
+const networkTracker = (request: Record<string, unknown>) =>
+  `ip:${String(request.ip)}`;
+
+const signedIn = (context: ExecutionContext) =>
+  Boolean(context.switchToHttp().getRequest<{ user?: AuthUser }>().user);
+
+/** A whole network address gets this many times one account's limit, for a campus behind one address. */
+const NETWORK_FACTOR = 10;
+
+/** One limit per account, and a looser one per network address before sign-in. */
+function accountAndNetwork(
+  name: string,
+  marker: string,
+  ttl: number,
+  limit: number,
+) {
+  return [
+    {
+      name,
+      ttl,
+      limit,
+      skipIf: lacks(marker),
+      getTracker: accountTracker,
+      generateKey: sharedAcrossEndpoints,
+    },
+    {
+      name: `${name}-network`,
+      ttl,
+      limit: limit * NETWORK_FACTOR,
+      skipIf: (context: ExecutionContext) =>
+        lacks(marker)(context) || signedIn(context),
+      getTracker: networkTracker,
+      generateKey: sharedAcrossEndpoints,
+    },
+  ];
+}
+
 export function throttlerOptions(
   config: ConfigService<EnvironmentVariables, true>,
 ): ThrottlerModuleOptions {
@@ -56,20 +109,18 @@ export function throttlerOptions(
     errorMessage: 'Too many requests. Wait a few minutes and try again.',
     throttlers: [
       { name: 'default', ttl: MINUTE, limit: 120 },
-      {
-        name: 'email',
-        ttl: 60 * MINUTE,
-        limit: config.get('RATE_LIMIT_EMAILS_PER_HOUR', { infer: true }),
-        skipIf: lacks(SENDS_EMAIL),
-        generateKey: sharedAcrossEndpoints,
-      },
-      {
-        name: 'secrets',
-        ttl: 15 * MINUTE,
-        limit: config.get('RATE_LIMIT_LOGINS_PER_15_MIN', { infer: true }),
-        skipIf: lacks(GUESSES_SECRET),
-        generateKey: sharedAcrossEndpoints,
-      },
+      ...accountAndNetwork(
+        'email',
+        SENDS_EMAIL,
+        60 * MINUTE,
+        config.get('RATE_LIMIT_EMAILS_PER_HOUR', { infer: true }),
+      ),
+      ...accountAndNetwork(
+        'secrets',
+        GUESSES_SECRET,
+        15 * MINUTE,
+        config.get('RATE_LIMIT_LOGINS_PER_15_MIN', { infer: true }),
+      ),
       {
         name: 'uploads',
         ttl: MINUTE,

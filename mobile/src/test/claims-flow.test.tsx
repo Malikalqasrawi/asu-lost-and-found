@@ -5,7 +5,7 @@ import { Alert } from 'react-native';
 import type { ClaimForm, FinderClaim, FinderClaims, MyClaim } from '@/api/claims';
 import type { Post } from '@/api/posts';
 import { clearTokens } from '@/session/tokens';
-import { mockApi, requestsTo, signedIn } from '@/test/mock-api';
+import { authResponse, mockApi, requestsTo, signedIn } from '@/test/mock-api';
 import { press, type } from '@/test/screen';
 
 const { resetSecureStore } = SecureStore as unknown as { resetSecureStore: () => void };
@@ -235,6 +235,16 @@ describe('claims', () => {
 
     expect(await screen.findByText('You have used all 3 claims for this item.')).toBeOnTheScreen();
     expect(screen.queryByRole('button', { name: 'This is mine' })).toBeNull();
+  });
+
+  it('offers no claim to the security office, which sees desk items unblurred', async () => {
+    fetchMock = await openPost(post(), {
+      'GET /users/me': () => [200, { ...authResponse.user, role: 'SECURITY' }],
+    });
+
+    expect(await screen.findByRole('header', { name: 'Black leather wallet' })).toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: 'This is mine' })).toBeNull();
+    expect(requestsTo(fetchMock, 'GET', '/posts/post-1/claim-form')).toHaveLength(0);
   });
 
   it('shows the originals to the student whose claim was accepted', async () => {

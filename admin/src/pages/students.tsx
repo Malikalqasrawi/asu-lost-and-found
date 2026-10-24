@@ -58,11 +58,11 @@ export function StudentsPage() {
               <td>
                 {student.fullName}
                 {student.role !== 'STUDENT' ? (
-                  <span className="badge"> {student.role.toLowerCase()}</span>
+                  <span className="badge">{student.role.toLowerCase()}</span>
                 ) : null}
               </td>
               <td>{student.email}</td>
-              <td>{formatDate(student.createdAt)}</td>
+              <td className="nowrap">{formatDate(student.createdAt)}</td>
               <td>{banText(student)}</td>
               <td>
                 {student.ban ? (

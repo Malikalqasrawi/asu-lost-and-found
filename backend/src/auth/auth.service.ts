@@ -18,7 +18,11 @@ import {
   UserProfile,
   UsersService,
 } from '../users/users.service.js';
-import { passwordResetEmail, verificationEmail } from './auth-emails.js';
+import {
+  passwordResetEmail,
+  securitySignInEmail,
+  verificationEmail,
+} from './auth-emails.js';
 import {
   LoginDto,
   RegisterDto,
@@ -26,7 +30,7 @@ import {
   VerifyEmailDto,
 } from './dto/auth.dto.js';
 import { EmailRule } from './email-domain.js';
-import { EmailCodesService } from './email-codes.service.js';
+import { codeExpiry, EmailCodesService } from './email-codes.service.js';
 import { hashPassword, verifyPassword } from './passwords.js';
 import { TokenPair, TokensService } from './tokens.service.js';
 
@@ -72,7 +76,9 @@ export class AuthService {
 
         const code = await this.codes.issue(tx, user.id, 'VERIFY_EMAIL');
         if (code) {
-          await this.outbox.enqueue(tx, verificationEmail(user.email, code));
+          await this.outbox.enqueue(tx, verificationEmail(user.email, code), {
+            expiresAt: codeExpiry(),
+          });
         }
       });
     } catch (error) {
@@ -93,7 +99,9 @@ export class AuthService {
     await this.prisma.$transaction(async (tx) => {
       const code = await this.codes.issue(tx, user.id, 'VERIFY_EMAIL');
       if (code) {
-        await this.outbox.enqueue(tx, verificationEmail(user.email, code));
+        await this.outbox.enqueue(tx, verificationEmail(user.email, code), {
+          expiresAt: codeExpiry(),
+        });
       }
     });
   }
@@ -141,7 +149,35 @@ export class AuthService {
         code: 'EMAIL_NOT_VERIFIED',
       });
     }
+    if (user.role === 'SECURITY') {
+      await this.checkSecurityCode(user, dto.code);
+    }
     return this.startSession(user);
+  }
+
+  /**
+   * The desk sees finders' emails and original photos, so a password alone
+   * isn't enough: the first try emails a code, the second brings it back.
+   */
+  private async checkSecurityCode(user: User, code?: string): Promise<void> {
+    if (code) {
+      if (!(await this.codes.consume(user.id, 'SECURITY_SIGN_IN', code))) {
+        throw invalidCode();
+      }
+      return;
+    }
+    await this.prisma.$transaction(async (tx) => {
+      const issued = await this.codes.issue(tx, user.id, 'SECURITY_SIGN_IN');
+      if (issued) {
+        await this.outbox.enqueue(tx, securitySignInEmail(user.email, issued), {
+          expiresAt: codeExpiry(),
+        });
+      }
+    });
+    throw new ForbiddenException({
+      message: 'We emailed you a 6-digit code. Enter it to finish signing in.',
+      code: 'SIGN_IN_CODE_REQUIRED',
+    });
   }
 
   /**
@@ -169,7 +205,9 @@ export class AuthService {
     await this.prisma.$transaction(async (tx) => {
       const code = await this.codes.issue(tx, user.id, 'RESET_PASSWORD');
       if (code) {
-        await this.outbox.enqueue(tx, passwordResetEmail(user.email, code));
+        await this.outbox.enqueue(tx, passwordResetEmail(user.email, code), {
+          expiresAt: codeExpiry(),
+        });
       }
     });
   }

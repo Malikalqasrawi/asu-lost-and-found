@@ -6,6 +6,8 @@ import { MailMessage, MailSender } from './mail-sender.js';
 export const MAX_SEND_ATTEMPTS = 5;
 const BATCH_SIZE = 10;
 const LEASE_MS = 60_000;
+/** Emails that never went out are kept this long, so the reason can be looked at. */
+const KEEP_FAILED_MS = 7 * 24 * 60 * 60_000;
 
 @Injectable()
 export class OutboxService {
@@ -16,17 +18,34 @@ export class OutboxService {
     private readonly mailer: MailSender,
   ) {}
 
+  /** `expiresAt`: when the email is no use any more, such as when its code expires. */
   async enqueue(
     db: Prisma.TransactionClient,
     message: MailMessage,
+    { expiresAt }: { expiresAt?: Date } = {},
   ): Promise<void> {
     await db.outboxEmail.create({
       data: {
         toAddress: message.to,
         subject: message.subject,
         textBody: message.text,
+        expiresAt,
       },
     });
+  }
+
+  /** Drops emails whose code has expired and ones that failed a week ago; codes don't linger in the table. */
+  async purge(): Promise<number> {
+    const now = Date.now();
+    const { count } = await this.prisma.outboxEmail.deleteMany({
+      where: {
+        OR: [
+          { expiresAt: { lte: new Date(now) } },
+          { failedAt: { lte: new Date(now - KEEP_FAILED_MS) } },
+        ],
+      },
+    });
+    return count;
   }
 
   async processDue(): Promise<number> {
@@ -38,10 +57,14 @@ export class OutboxService {
   }
 
   private claimDue(): Promise<OutboxEmail[]> {
+    // The API sets next_attempt_at, so it compares with its own clock: the
+    // database's can run a little behind and hold back an email just queued.
+    const now = new Date();
     return this.prisma.$transaction(async (tx) => {
       const due = await tx.$queryRaw<{ id: string }[]>`
         SELECT id FROM outbox_emails
-        WHERE failed_at IS NULL AND next_attempt_at <= now()
+        WHERE failed_at IS NULL AND next_attempt_at <= ${now}
+          AND (expires_at IS NULL OR expires_at > ${now})
         ORDER BY next_attempt_at
         LIMIT ${BATCH_SIZE}
         FOR UPDATE SKIP LOCKED`;
@@ -65,11 +88,12 @@ export class OutboxService {
         subject: email.subject,
         text: email.textBody,
       });
-      await this.prisma.outboxEmail.delete({ where: { id: email.id } });
+      // The cleanup or an account deletion may have removed the row meanwhile.
+      await this.prisma.outboxEmail.deleteMany({ where: { id: email.id } });
     } catch (error) {
       const attempts = email.attempts + 1;
       const gaveUp = attempts >= MAX_SEND_ATTEMPTS;
-      await this.prisma.outboxEmail.update({
+      await this.prisma.outboxEmail.updateMany({
         where: { id: email.id },
         data: {
           attempts,

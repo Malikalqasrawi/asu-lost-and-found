@@ -20,7 +20,7 @@ import {
 } from './admin-cookie.js';
 import { AdminAuthService, type AdminChallenge } from './admin-auth.service.js';
 import { Public } from './decorators.js';
-import { AdminCodeDto, LoginDto } from './dto/auth.dto.js';
+import { AdminCodeDto, CredentialsDto } from './dto/auth.dto.js';
 import type { UserProfile } from '../users/users.service.js';
 
 interface AdminAccess {
@@ -45,7 +45,7 @@ export class AdminAuthController {
   @HttpCode(HttpStatus.OK)
   @SendsEmail()
   @GuessesSecret()
-  login(@Body() dto: LoginDto): Promise<AdminChallenge> {
+  login(@Body() dto: CredentialsDto): Promise<AdminChallenge> {
     return this.auth.login(dto);
   }
 

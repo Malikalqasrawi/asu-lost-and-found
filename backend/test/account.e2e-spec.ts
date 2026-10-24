@@ -557,6 +557,20 @@ describe('account settings', () => {
         .expect(403);
     });
 
+    it('leaves only the goodbye email queued for the erased address', async () => {
+      const found = await post(me, 'FOUND');
+      await claim(await student(), found.id);
+
+      await as(me).delete('/api/users/me', { password: PASSWORD }).expect(204);
+
+      const queued = await ctx.prisma.outboxEmail.findMany({
+        where: { toAddress: me.email },
+      });
+      expect(queued.map((email) => email.subject)).toEqual([
+        'Your ASU Lost & Found account was deleted',
+      ]);
+    });
+
     it('waits until a handover is finished', async () => {
       const found = await post(me, 'FOUND');
       const owner = await student();

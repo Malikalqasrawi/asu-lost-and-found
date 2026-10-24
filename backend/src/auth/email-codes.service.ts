@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
-import { createHash, randomInt, timingSafeEqual } from 'node:crypto';
+import { ConfigService } from '@nestjs/config';
+import { createHmac, randomInt, timingSafeEqual } from 'node:crypto';
+import { EnvironmentVariables } from '../config/env.validation.js';
 import type { EmailCodePurpose, Prisma } from '../generated/prisma/client.js';
 import { lastDay } from '../common/time.js';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -12,9 +14,8 @@ export const RESEND_COOLDOWN_MS = 60_000;
 export const MAX_CODES_PER_DAY = 5;
 export const MAX_GUESSES_PER_DAY = 15;
 
-function hashCode(code: string): string {
-  return createHash('sha256').update(code).digest('hex');
-}
+/** When an email with a code just issued stops being worth sending. */
+export const codeExpiry = () => new Date(Date.now() + CODE_TTL_MS);
 
 function sameHash(a: string, b: string): boolean {
   return timingSafeEqual(Buffer.from(a, 'hex'), Buffer.from(b, 'hex'));
@@ -22,7 +23,22 @@ function sameHash(a: string, b: string): boolean {
 
 @Injectable()
 export class EmailCodesService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly key: string;
+
+  constructor(
+    private readonly prisma: PrismaService,
+    config: ConfigService<EnvironmentVariables, true>,
+  ) {
+    this.key = `${config.get('JWT_SECRET', { infer: true })}:email-codes`;
+  }
+
+  /**
+   * Keyed, because a plain hash of one of a million codes is reversed in
+   * milliseconds by anyone who reads the table.
+   */
+  private hashCode(code: string): string {
+    return createHmac('sha256', this.key).update(code).digest('hex');
+  }
 
   /**
    * Creates a new 6-digit code and expires the older ones. Returns null when
@@ -59,7 +75,7 @@ export class EmailCodesService {
       data: {
         userId,
         purpose,
-        codeHash: hashCode(code),
+        codeHash: this.hashCode(code),
         expiresAt: new Date(Date.now() + CODE_TTL_MS),
       },
     });
@@ -98,7 +114,10 @@ export class EmailCodesService {
       },
       data: { attempts: { increment: 1 } },
     });
-    if (attempt.count === 0 || !sameHash(current.codeHash, hashCode(code))) {
+    if (
+      attempt.count === 0 ||
+      !sameHash(current.codeHash, this.hashCode(code))
+    ) {
       return false;
     }
 

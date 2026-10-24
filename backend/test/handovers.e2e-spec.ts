@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { ClaimForm } from '../src/claims/claims.service.js';
 import type { MyClaimView } from '../src/claims/claim-view.js';
 import type { DeskItemView } from '../src/handovers/desk.service.js';
@@ -9,7 +10,7 @@ import type {
 import type { PlaceView } from '../src/places/places.service.js';
 import type { PostView } from '../src/posts/post-view.js';
 import { UsersService } from '../src/users/users.service.js';
-import { createVerifiedUser } from './support/accounts.js';
+import { createVerifiedUser, signInAsSecurity } from './support/accounts.js';
 import { createTestApp, TestContext } from './support/app.js';
 import { photoWithGps } from './support/images.js';
 
@@ -105,6 +106,7 @@ describe('handovers', () => {
     places = (await as(finder).get('/api/places')).body;
     security = await student();
     await ctx.app.get(UsersService).setRole(security.email, 'SECURITY');
+    security.token = (await signInAsSecurity(ctx, security.email)).accessToken;
   });
 
   beforeEach(async () => {
@@ -391,6 +393,19 @@ describe('handovers', () => {
       expect(after.desk).toBeNull();
     });
 
+    it('never lets security staff claim an item they can see unblurred', async () => {
+      const post = await foundItem();
+      await as(finder).post(`/api/posts/${post.id}/desk`).expect(204);
+      await as(security).post(`/api/desk/items/${post.id}/receive`).expect(200);
+
+      await as(security).get(`/api/posts/${post.id}/claim-form`).expect(403);
+      await as(security)
+        .post(`/api/posts/${post.id}/claims`, {
+          answers: [{ questionId: randomUUID(), answer: 'A sticker' }],
+        })
+        .expect(403);
+    });
+
     it('is only open to security staff', async () => {
       const post = await foundItem();
       await as(finder).post(`/api/posts/${post.id}/desk`).expect(204);
@@ -488,18 +503,20 @@ describe('handovers', () => {
     });
 
     it("doesn't let security staff hand over their own item", async () => {
-      const colleague = await student();
-      await ctx.app.get(UsersService).setRole(colleague.email, 'SECURITY');
-      const post = await acceptedItem(undefined, security);
+      // A student whose claim was accepted and who joined the desk afterwards.
+      const newStaff = await student();
+      const post = await acceptedItem(undefined, newStaff);
+      await ctx.app.get(UsersService).setRole(newStaff.email, 'SECURITY');
+      newStaff.token = (
+        await signInAsSecurity(ctx, newStaff.email)
+      ).accessToken;
       await as(finder).post(`/api/posts/${post.id}/desk`).expect(204);
-      await as(colleague)
-        .post(`/api/desk/items/${post.id}/receive`)
-        .expect(200);
-      const code = (await handover(security, post.id)).pickupCode!;
+      await as(security).post(`/api/desk/items/${post.id}/receive`).expect(200);
+      const code = (await handover(newStaff, post.id)).pickupCode!;
 
-      const refused = await handOver(security, post.id, code).expect(403);
+      const refused = await handOver(newStaff, post.id, code).expect(403);
       expect(refused.body.message).toContain('Another member of staff');
-      await handOver(colleague, post.id, code).expect(204);
+      await handOver(security, post.id, code).expect(204);
     });
 
     it('lets security staff hand over only items at the desk', async () => {

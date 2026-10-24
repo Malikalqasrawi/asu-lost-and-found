@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  ForbiddenException,
   Get,
   HttpCode,
   HttpStatus,
@@ -15,6 +16,15 @@ import type { FinderClaimView, MyClaimView } from './claim-view.js';
 import { ClaimForm, ClaimsService, FinderClaims } from './claims.service.js';
 import { CreateClaimDto } from './dto/claim.dto.js';
 
+/** The security office sees desk items unblurred, so its accounts can't claim anything. */
+function checkMayClaim(user: AuthUser): void {
+  if (user.role === 'SECURITY') {
+    throw new ForbiddenException(
+      "Security office accounts can't claim items. Use your student account.",
+    );
+  }
+}
+
 @Controller()
 export class ClaimsController {
   constructor(private readonly claims: ClaimsService) {}
@@ -24,6 +34,7 @@ export class ClaimsController {
     @Param('id', ParseUUIDPipe) postId: string,
     @CurrentUser() user: AuthUser,
   ): Promise<ClaimForm> {
+    checkMayClaim(user);
     return this.claims.claimForm(postId, user.id);
   }
 
@@ -34,6 +45,7 @@ export class ClaimsController {
     @CurrentUser() user: AuthUser,
     @Body() dto: CreateClaimDto,
   ): Promise<MyClaimView> {
+    checkMayClaim(user);
     return this.claims.create(postId, user.id, dto);
   }
 

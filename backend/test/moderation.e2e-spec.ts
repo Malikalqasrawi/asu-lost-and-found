@@ -332,6 +332,26 @@ describe('moderation', () => {
       expect(email?.text).toContain('Reason: Posting fake items');
     });
 
+    it('drops an email change the student had started', async () => {
+      await as(author)
+        .post('/api/users/me/email', {
+          newEmail: `${String(Date.now()).slice(-9)}@students.asu.edu.jo`,
+          password: PASSWORD,
+        })
+        .expect(202);
+
+      await ban(author, { reason: 'Posting fake items', days: 7 }).expect(200);
+
+      const row = await ctx.prisma.user.findUniqueOrThrow({
+        where: { id: author.id },
+      });
+      expect(row.pendingEmail).toBeNull();
+      const codes = await ctx.prisma.emailCode.count({
+        where: { userId: author.id, purpose: 'CHANGE_EMAIL' },
+      });
+      expect(codes).toBe(0);
+    });
+
     it('neither finds nor bans a deleted account', async () => {
       await ctx
         .http()

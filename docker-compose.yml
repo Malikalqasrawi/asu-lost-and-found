@@ -1,6 +1,6 @@
 services:
   db:
-    image: postgres:17-alpine
+    image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
     environment:
       POSTGRES_DB: lostfound
       POSTGRES_USER: postgres
@@ -22,7 +22,7 @@ services:
   # Catches every email the API sends; open http://localhost:8027 to read them.
   # Point the MAIL_* settings in .env at a real SMTP server to deliver them instead.
   mailpit:
-    image: axllent/mailpit:v1.31.4
+    image: axllent/mailpit:v1.31.4@sha256:b68349e3a014b90c5610bfb26b2ae36f3892d7b8cf25ee140c6c71c98d2fcf48
     ports:
       - "127.0.0.1:8027:8025"
       # SMTP, for a backend started with npm run start:dev.
@@ -40,11 +40,12 @@ services:
 
   backend:
     build: ./backend
+    image: asu-lost-and-found-backend
     restart: unless-stopped
     # A last line of defence: if photo processing ever runs away, Docker restarts
     # the backend instead of the whole machine running out of memory.
     mem_limit: 768m
-    environment:
+    environment: &backend-env
       DATABASE_URL: postgresql://lostfound_app:${DB_APP_PASSWORD}@db:5432/lostfound
       PORT: 3000
       UPLOAD_DIR: /app/uploads
@@ -72,6 +73,21 @@ services:
       migrate:
         condition: service_completed_successfully
       mailpit:
+        condition: service_started
+
+  # Demo data for screenshots, on an empty local database only:
+  # docker compose --profile demo run --rm seed
+  seed:
+    image: asu-lost-and-found-backend
+    profiles: [demo]
+    command: ["node", "dist/cli/seed-demo.js"]
+    environment:
+      <<: *backend-env
+      DEMO_PASSWORD: ${DEMO_PASSWORD:-}
+    volumes:
+      - uploads:/app/uploads
+    depends_on:
+      backend:
         condition: service_started
 
   admin:

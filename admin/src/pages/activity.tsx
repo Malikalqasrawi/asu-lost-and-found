@@ -33,9 +33,9 @@ export function ActivityPage() {
         <tbody>
           {log.data?.map((entry) => (
             <tr key={entry.id}>
-              <td>{formatDate(entry.createdAt)}</td>
-              <td>{entry.admin}</td>
-              <td>{actionLabels[entry.action]}</td>
+              <td className="nowrap">{formatDate(entry.createdAt)}</td>
+              <td className="nowrap">{entry.admin}</td>
+              <td className="nowrap">{actionLabels[entry.action]}</td>
               <td>{entry.about}</td>
               <td>{entry.note}</td>
             </tr>

@@ -32,7 +32,7 @@ export const authApi = {
   verifyEmail: (body: { email: string; password: string; code: string }) =>
     apiRequest<AuthResponse>('POST', '/auth/verify-email', { body }),
 
-  login: (body: { email: string; password: string }) =>
+  login: (body: { email: string; password: string; code?: string }) =>
     apiRequest<AuthResponse>('POST', '/auth/login', { body }),
 
   microsoftStart: () => apiRequest<{ nonce: string }>('POST', '/auth/microsoft/start'),

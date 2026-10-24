@@ -14,8 +14,8 @@ import {
   UsersService,
 } from '../users/users.service.js';
 import { adminSignInEmail } from './auth-emails.js';
-import { AdminCodeDto, LoginDto } from './dto/auth.dto.js';
-import { EmailCodesService } from './email-codes.service.js';
+import { AdminCodeDto, CredentialsDto } from './dto/auth.dto.js';
+import { codeExpiry, EmailCodesService } from './email-codes.service.js';
 import { verifyPassword } from './passwords.js';
 import { TokenPair, TokensService } from './tokens.service.js';
 
@@ -56,7 +56,7 @@ export class AdminAuthService {
   }
 
   /** A wrong password and a student account answer the same, so nobody learns who is an admin. */
-  async login(dto: LoginDto): Promise<AdminChallenge> {
+  async login(dto: CredentialsDto): Promise<AdminChallenge> {
     const user = await this.users.findByEmail(dto.email);
     const passwordMatches = await verifyPassword(
       dto.password,
@@ -68,7 +68,9 @@ export class AdminAuthService {
     await this.prisma.$transaction(async (tx) => {
       const code = await this.codes.issue(tx, user.id, 'ADMIN_SIGN_IN');
       if (code) {
-        await this.outbox.enqueue(tx, adminSignInEmail(user.email, code));
+        await this.outbox.enqueue(tx, adminSignInEmail(user.email, code), {
+          expiresAt: codeExpiry(),
+        });
       }
     });
     const challenge = await this.jwt.signAsync(

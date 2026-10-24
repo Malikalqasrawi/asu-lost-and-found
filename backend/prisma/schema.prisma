@@ -92,6 +92,8 @@ enum EmailCodePurpose {
   CONFIRM_ACCOUNT
   /// Sent to the new address when a student changes their email.
   CHANGE_EMAIL
+  /// The second step when a security office account signs in with its password.
+  SECURITY_SIGN_IN
 }
 
 model User {
@@ -192,6 +194,8 @@ model OutboxEmail {
   nextAttemptAt DateTime  @default(now()) @map("next_attempt_at") @db.Timestamptz(3)
   lastError     String?   @map("last_error")
   failedAt      DateTime? @map("failed_at") @db.Timestamptz(3)
+  /// Emails with a code are worthless once the code expires, so they are dropped instead of sent.
+  expiresAt     DateTime? @map("expires_at") @db.Timestamptz(3)
   createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@index([nextAttemptAt])
