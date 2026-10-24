@@ -119,6 +119,11 @@ export class MicrosoftAuthService {
     existing: User,
     { microsoftId, name }: MicrosoftIdentity,
   ): Promise<User> {
+    // A first sign-in with the same Microsoft account at the same moment may
+    // have created or linked it after this sign-in looked it up by Microsoft id.
+    if (existing.microsoftId === microsoftId) {
+      return existing;
+    }
     if (existing.microsoftId) {
       throw new ConflictException(
         'This email belongs to an account linked to another Microsoft account.',
